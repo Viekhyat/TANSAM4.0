@@ -8,7 +8,7 @@ export default function DataPreviewTable({ headers = [], types = [], rows = [] }
   }
 
   return (
-    <div className="overflow-auto rounded-xl border border-slate-200 transition-colors dark:border-slate-600">
+    <div className="overflow-auto rounded-xl border border-slate-200 transition-colors dark:border-slate-600 max-h-full">
       <table className="min-w-full divide-y divide-slate-200 text-left text-xs text-slate-600 dark:divide-slate-700 dark:text-slate-300">
         <thead className="bg-slate-50 dark:bg-slate-800/60">
           <tr>

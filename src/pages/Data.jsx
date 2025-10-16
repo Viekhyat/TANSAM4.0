@@ -150,8 +150,8 @@ export default function DataPage() {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
-      <section className="flex flex-col gap-6">
+    <div className="h-full max-h-[calc(100vh-160px)] flex flex-col gap-6 sm:gap-8 lg:grid lg:grid-cols-[2fr,1fr] lg:h-auto lg:max-h-none">
+      <section className="flex flex-col gap-6 min-h-0 lg:max-h-[calc(100vh-160px)] lg:overflow-y-auto">
         <div className="rounded-2xl bg-white dark:bg-slate-800/80 p-6 shadow-sm">
           <div className="flex flex-col gap-2">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Import Data</h2>
@@ -230,14 +230,16 @@ export default function DataPage() {
           {statusMessage ? <p className="mt-4 text-sm text-slate-500 dark:text-slate-300">{statusMessage}</p> : null}
         </div>
 
-        <div className="rounded-2xl bg-white dark:bg-slate-800/80 p-6 shadow-sm">
-          <div className="flex flex-col gap-2">
+        <div className="rounded-2xl bg-white dark:bg-slate-800/80 p-6 shadow-sm flex flex-col max-h-[calc(100vh-400px)]">
+          <div className="flex flex-col gap-2 mb-4 flex-shrink-0">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Preview (first 50 rows)</h3>
             <p className="text-sm text-slate-500 dark:text-slate-300">Detected headers and inferred data types are shown below.</p>
           </div>
-          <div className="mt-4">
+          <div className="flex-1 min-h-0 overflow-hidden">
             {activePreview ? (
-              <DataPreviewTable headers={activePreview.headers} types={activePreview.types} rows={activePreview.rows.slice(0, 50)} />
+              <div className="h-full overflow-auto">
+                <DataPreviewTable headers={activePreview.headers} types={activePreview.types} rows={activePreview.rows.slice(0, 50)} />
+              </div>
             ) : (
               <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 text-sm text-slate-500 dark:text-slate-300">
                 <p>No data loaded yet. Import a file or fetch a Google Sheet to see the preview.</p>
@@ -247,36 +249,38 @@ export default function DataPage() {
         </div>
       </section>
 
-      <aside className="flex flex-col gap-6">
-        <div className="rounded-2xl bg-white dark:bg-slate-800/80 p-6 shadow-sm">
-          <div className="flex items-center justify-between">
+      <aside className="flex flex-col gap-6 min-h-0 lg:max-h-[calc(100vh-160px)] lg:overflow-y-auto">
+        <div className="rounded-2xl bg-white dark:bg-slate-800/80 p-6 shadow-sm flex flex-col min-h-0">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Saved datasets</h2>
             <span className="rounded-full bg-slate-100 dark:bg-slate-800/60 px-3 py-1 text-xs font-medium text-slate-600 dark:text-slate-300">
               {savedDatasets.length}
             </span>
           </div>
-          <div className="mt-4 flex flex-col gap-3">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {savedDatasets.length === 0 ? (
               <p className="rounded-xl bg-slate-50 dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-500 dark:text-slate-300">No datasets saved yet.</p>
             ) : (
-              savedDatasets.map((dataset) => (
-                <div key={dataset.id} className="rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{dataset.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-300">
-                        {dataset.rowsPreview?.length || 0} rows · {dataset.schema?.headers?.length || 0} columns
-                      </p>
+              <div className="flex flex-col gap-3">
+                {savedDatasets.map((dataset) => (
+                  <div key={dataset.id} className="rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{dataset.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-300">
+                          {dataset.rowsPreview?.length || 0} rows · {dataset.schema?.headers?.length || 0} columns
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => onDeleteDataset(dataset.id, dataset.name)}
+                        className="rounded-full border border-transparent px-3 py-1 text-xs font-semibold text-red-500 transition hover:border-red-100 hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
                     </div>
-                    <button
-                      onClick={() => onDeleteDataset(dataset.id, dataset.name)}
-                      className="rounded-full border border-transparent px-3 py-1 text-xs font-semibold text-red-500 transition hover:border-red-100 hover:bg-red-50"
-                    >
-                      Delete
-                    </button>
                   </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         </div>

@@ -5,3 +5,57 @@
 body {
   @apply bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-100;
 }
+
+/* Custom scrollbar styles for better UX */
+.overflow-auto::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.overflow-auto::-webkit-scrollbar-track {
+  @apply bg-slate-100 dark:bg-slate-800;
+  border-radius: 4px;
+}
+
+.overflow-auto::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-600;
+  border-radius: 4px;
+}
+
+.overflow-auto::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-500;
+}
+
+/* Ensure proper height calculations on mobile */
+@media (max-height: 600px) {
+  .min-h-\[calc\(100vh-160px\)\] {
+    min-height: 400px;
+  }
+  
+  .max-h-\[calc\(100vh-400px\)\] {
+    max-height: 300px;
+  }
+}
+
+/* Better height management for data preview */
+@media (max-height: 800px) {
+  .max-h-\[calc\(100vh-400px\)\] {
+    max-height: 350px;
+  }
+}
+
+/* Better mobile layout */
+@media (max-width: 768px) {
+  .lg\:grid {
+    display: flex !important;
+    flex-direction: column;
+  }
+  
+  .lg\:grid-cols-\[2fr\,1fr\] {
+    grid-template-columns: none !important;
+  }
+  
+  .lg\:max-h-\[calc\(100vh-160px\)\] {
+    max-height: none !important;
+  }
+}

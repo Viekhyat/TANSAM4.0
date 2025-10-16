@@ -63,7 +63,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 min-h-[calc(100vh-160px)]">
       <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-100 transition-colors dark:bg-slate-800/80 dark:ring-slate-700">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -115,7 +115,7 @@ export default function DashboardPage() {
             .
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 max-h-[calc(100vh-400px)] overflow-y-auto">
             {chartList.map((chart) => {
               const dataset = datasets[chart.datasetId];
               const rows = dataset?.data || dataset?.rowsPreview || [];

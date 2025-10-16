@@ -83,7 +83,7 @@ function Layout() {
           )}
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6 text-slate-800 transition-colors dark:text-slate-100">
+      <main className="mx-auto max-w-7xl px-4 py-6 text-slate-800 transition-colors dark:text-slate-100 min-h-[calc(100vh-120px)]">
         <Outlet />
       </main>
     </div>
