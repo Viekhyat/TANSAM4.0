@@ -32,6 +32,8 @@ export default function DataPage() {
   const [activeSource, setActiveSource] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  // allow user to opt-in to storing full dataset (may impact performance)
+  const [storeFullData, setStoreFullData] = useState(false);
 
   const savedDatasets = useMemo(() => Object.values(datasets).sort((a, b) => (a.name || "").localeCompare(b.name || "")), [datasets]);
 
@@ -125,22 +127,109 @@ export default function DataPage() {
       return;
     }
     const id = generateId();
+
+    const rows = activePreview.rows || [];
+    const rowsPreview = rows.slice(0, 50);
+    // Behavior: persisted "full" dataset will only include the last N rows.
+    const STORE_LAST_N = 1000;
+    // keep existing large-save guard but still allow storing (last N rows) when opted-in
+    const MAX_FULL_ROWS = 20000;
+    const allowAutoFullStore = rows.length > 0 && rows.length <= MAX_FULL_ROWS;
+
+    const wantFullStore = storeFullData || allowAutoFullStore;
+    const rowsToStore = wantFullStore ? rows.slice(Math.max(0, rows.length - STORE_LAST_N)) : undefined;
     const payload = {
       id,
       name: datasetName,
       sourceType: activeSource?.kind || "manual",
       schema: { headers: activePreview.headers, types: activePreview.types },
-      rowsPreview: activePreview.rows.slice(0, 50),
-      data: activePreview.rows,
-      fullDataStored: true,
+      rowsPreview,
+      // store only last STORE_LAST_N rows when persisting "full" dataset
+      data: rowsToStore,
+      fullDataStored: !!rowsToStore,
+      originalRowCount: rows.length,
+      storedRowCount: rowsToStore ? rowsToStore.length : 0,
       createdAt: nowIso(),
       updatedAt: nowIso()
     };
-    saveDataset(payload);
-    setStatusMessage(`Saved dataset "${datasetName}".`);
-    resetField("datasetName");
-    resetField("googleUrl");
-    resetPreview();
+
+    const performSave = () => {
+      try {
+        const result = saveDataset(payload);
+        if (result && typeof result.then === "function") {
+          return result.then(() => {
+            const storedCount = payload.storedRowCount ?? 0;
+            setStatusMessage(
+              storedCount > 0
+                ? `Saved dataset "${datasetName}" (stored ${storedCount.toLocaleString()} of ${payload.originalRowCount.toLocaleString()} rows).`
+                : `Saved dataset "${datasetName}".`
+            );
+            resetField("datasetName");
+            resetField("googleUrl");
+            resetPreview();
+          });
+        } else {
+          const storedCount = payload.storedRowCount ?? 0;
+          setStatusMessage(
+            storedCount > 0
+              ? `Saved dataset "${datasetName}" (stored ${storedCount.toLocaleString()} of ${payload.originalRowCount.toLocaleString()} rows).`
+              : `Saved dataset "${datasetName}".`
+          );
+          resetField("datasetName");
+          resetField("googleUrl");
+          resetPreview();
+          return Promise.resolve();
+        }
+      } catch (err) {
+        console.error(err);
+        setStatusMessage(err?.message || "Failed to save dataset.");
+        return Promise.reject(err);
+      }
+    };
+
+    // If dataset is large and user requested full store, save asynchronously to avoid blocking the main thread.
+    if (rows.length > MAX_FULL_ROWS && storeFullData) {
+      setStatusMessage(`Saving full dataset (${rows.length.toLocaleString()} rows) in background...`);
+      // defer slightly so UI can update before heavy work starts
+      setTimeout(() => {
+        performSave().catch(() => {}); // errors already handled in performSave
+      }, 50);
+      return;
+    }
+
+    // If dataset is larger than threshold and user didn't opt-in, only persist preview and warn.
+    if (rows.length > MAX_FULL_ROWS && !storeFullData) {
+      const previewOnlyPayload = {
+        ...payload,
+        data: undefined,
+        fullDataStored: false,
+        storedRowCount: 0
+      };
+      try {
+        const res = saveDataset(previewOnlyPayload);
+        if (res && typeof res.then === "function") {
+          res.then(() =>
+            setStatusMessage(
+              `Dataset "${datasetName}" saved (preview only). Toggle "Store full dataset" to persist last ${STORE_LAST_N.toLocaleString()} rows.`
+            )
+          );
+        } else {
+          setStatusMessage(
+            `Dataset "${datasetName}" saved (preview only). Toggle "Store full dataset" to persist last ${STORE_LAST_N.toLocaleString()} rows.`
+          );
+        }
+        resetField("datasetName");
+        resetField("googleUrl");
+        resetPreview();
+      } catch (err) {
+        console.error(err);
+        setStatusMessage(err?.message || "Failed to save dataset.");
+      }
+      return;
+    }
+
+    // Normal small/full save
+    performSave().catch(() => {});
   };
 
   const onDeleteDataset = (id, name) => {
@@ -150,8 +239,8 @@ export default function DataPage() {
   };
 
   return (
-    <div className="h-full max-h-[calc(100vh-160px)] flex flex-col gap-6 sm:gap-8 lg:grid lg:grid-cols-[2fr,1fr] lg:h-auto lg:max-h-none">
-      <section className="flex flex-col gap-6 min-h-0 lg:max-h-[calc(100vh-160px)] lg:overflow-y-auto">
+    <div className="flex w-full flex-1 flex-col gap-6 sm:gap-8 lg:grid lg:grid-cols-[2fr,1fr] min-h-0">
+      <section className="flex flex-col gap-6 min-h-0 lg:overflow-y-auto">
         <div className="rounded-2xl bg-white dark:bg-slate-800/80 p-6 shadow-sm">
           <div className="flex flex-col gap-2">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Import Data</h2>
@@ -202,6 +291,15 @@ export default function DataPage() {
               className="rounded-xl border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200"
               {...register("datasetName", { required: "Dataset name is required" })}
             />
+            <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 mt-2">
+              <input
+                type="checkbox"
+                checked={storeFullData}
+                onChange={(e) => setStoreFullData(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400"
+              />
+              Store full dataset (will persist only the last 1,000 rows)
+            </label>
           </div>
           <div className="mt-6 flex items-center justify-between rounded-xl bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
             <label
@@ -230,7 +328,7 @@ export default function DataPage() {
           {statusMessage ? <p className="mt-4 text-sm text-slate-500 dark:text-slate-300">{statusMessage}</p> : null}
         </div>
 
-        <div className="rounded-2xl bg-white dark:bg-slate-800/80 p-6 shadow-sm flex flex-col max-h-[calc(100vh-400px)]">
+        <div className="rounded-2xl bg-white dark:bg-slate-800/80 p-6 shadow-sm flex flex-col min-h-0">
           <div className="flex flex-col gap-2 mb-4 flex-shrink-0">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Preview (first 50 rows)</h3>
             <p className="text-sm text-slate-500 dark:text-slate-300">Detected headers and inferred data types are shown below.</p>
@@ -249,7 +347,7 @@ export default function DataPage() {
         </div>
       </section>
 
-      <aside className="flex flex-col gap-6 min-h-0 lg:max-h-[calc(100vh-160px)] lg:overflow-y-auto">
+      <aside className="flex flex-col gap-6 min-h-0 lg:overflow-y-auto">
         <div className="rounded-2xl bg-white dark:bg-slate-800/80 p-6 shadow-sm flex flex-col min-h-0">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Saved datasets</h2>

@@ -313,7 +313,7 @@ export default function VisualizePage() {
   const chartSummary = chartDefinitions.find((item) => item.value === chartType);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 pb-16 pt-8 sm:px-6 lg:px-8 min-h-[calc(100vh-160px)]">
+    <div className="flex w-full flex-col gap-8 px-4 pb-16 pt-8 sm:px-6 lg:px-8 flex-1 min-h-0">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Visualize</h1>
@@ -330,7 +330,7 @@ export default function VisualizePage() {
         </button>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,340px)] flex-1 min-h-0 lg:gap-8">
+      <div className="grid gap-6 lg:grid-cols-2 flex-1 min-h-0 lg:gap-8">
         <section className="space-y-6 min-h-0 overflow-y-auto">
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
             <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-100 transition-colors dark:bg-slate-800/80 dark:ring-slate-700">
@@ -670,13 +670,13 @@ export default function VisualizePage() {
             </div>
           ) : null}
         </section>
-        <aside className="flex flex-col gap-6 min-h-0 max-h-[calc(100vh-200px)] overflow-y-auto">
+        <aside className="flex flex-col gap-6 min-h-0 max-h-[calc(100vh-200px)] overflow-y-auto lg:pl-6">
           <div className="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-slate-100 transition-colors dark:bg-slate-800/80 dark:ring-slate-700 flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Live preview</h3>
               {isDirty ? <span className="text-xs font-medium text-brand-600 dark:text-brand-400">Unsaved changes</span> : null}
             </div>
-            <div className="flex-1 min-h-0 rounded-xl bg-slate-50 p-4 dark:bg-slate-900/40">
+            <div className="flex-1 min-h-0 rounded-xl bg-slate-50 p-6 dark:bg-slate-900/40 h-full w-full">
               <ChartRenderer
                 chart={{
                   id: currentChartId || "preview",

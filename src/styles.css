@@ -59,3 +59,24 @@ body {
     max-height: none !important;
   }
 }
+
+/* Ensure root elements fill the viewport for flex layouts to work */
+html, body, #root {
+  height: 100%;
+}
+
+/* Allow main (flex children) to shrink so inner visual panels with overflow-auto can fill and scroll */
+main {
+  min-height: 0;
+}
+
+/* Ensure direct children of main can shrink/grow and fill space */
+main > * {
+  min-height: 0;
+}
+
+/* Utility to make an element fill its parent's vertical space */
+.fill-height {
+  height: 100%;
+  min-height: 0;
+}

@@ -20,9 +20,9 @@ function Layout() {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <div className="min-h-screen bg-slate-100 transition-colors dark:bg-slate-900">
-      <header className="bg-white shadow-sm transition-colors dark:bg-slate-800">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+    <div className="min-h-screen flex flex-col bg-slate-100 transition-colors dark:bg-slate-900 w-full">
+      <header className="bg-white shadow-sm transition-colors dark:bg-slate-800 w-full">
+        <div className="w-full flex items-center justify-between px-4 py-3">
           <Link to={user ? "/dashboard" : "/login"} className="flex items-center gap-2">
             <div className="rounded-md bg-brand-500 p-2 text-white">
               <span className="text-sm font-semibold">VD</span>
@@ -83,7 +83,7 @@ function Layout() {
           )}
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6 text-slate-800 transition-colors dark:text-slate-100 min-h-[calc(100vh-120px)]">
+      <main className="w-full px-4 py-6 text-slate-800 transition-colors dark:text-slate-100 flex-1 min-h-0 flex flex-col overflow-auto">
         <Outlet />
       </main>
     </div>
