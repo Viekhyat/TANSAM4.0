@@ -1,0 +1,7 @@
+[
+  { "category": "Hardware", "value": 32 },
+  { "category": "Software", "value": 24 },
+  { "category": "Services", "value": 18 },
+  { "category": "Support", "value": 16 },
+  { "category": "Training", "value": 10 }
+]

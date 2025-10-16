@@ -1,0 +1,13 @@
+Month,Revenue,Units,Region
+Jan,12000,320,North
+Feb,13500,340,North
+Mar,14250,355,North
+Apr,15800,380,West
+May,16400,402,West
+Jun,17850,425,West
+Jul,19000,448,South
+Aug,18750,440,South
+Sep,17600,415,South
+Oct,16900,398,East
+Nov,18500,430,East
+Dec,21000,470,East
