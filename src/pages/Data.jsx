@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { useStore } from "../providers/StoreContext.jsx";
 import {
@@ -13,6 +14,7 @@ const nowIso = () => new Date().toISOString();
 
 export default function DataPage() {
   const { datasets, saveDataset, deleteDataset, generateId } = useStore();
+  const navigate = useNavigate();
   const {
     register,
     handleSubmit,
@@ -34,8 +36,26 @@ export default function DataPage() {
   const [loading, setLoading] = useState(false);
   // allow user to opt-in to storing full dataset (may impact performance)
   const [storeFullData, setStoreFullData] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
 
-  const savedDatasets = useMemo(() => Object.values(datasets).sort((a, b) => (a.name || "").localeCompare(b.name || "")), [datasets]);
+  const savedDatasets = useMemo(
+    () => Object.values(datasets).sort((a, b) => (a.name || "").localeCompare(b.name || "")),
+    [datasets]
+  );
+
+  const datasetPreviewMap = useMemo(() => {
+    return savedDatasets.reduce((acc, dataset) => {
+      acc[dataset.id] = {
+        rows: dataset.rowsPreview || [],
+        headers: dataset.schema?.headers || [],
+        types: dataset.schema?.types || [],
+        totalRows: dataset.data?.length ?? dataset.rowsPreview?.length ?? 0
+      };
+      return acc;
+    }, {});
+  }, [savedDatasets]);
 
   const resetPreview = () => {
     setActivePreview(null);
@@ -393,4 +413,3 @@ export default function DataPage() {
     </div>
   );
 }
-
