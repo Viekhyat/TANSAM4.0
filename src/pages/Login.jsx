@@ -8,6 +8,7 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const [authError, setAuthError] = useState("");
+
   const {
     register,
     handleSubmit,
@@ -23,7 +24,7 @@ export default function Login() {
     setAuthError("");
     try {
       await Promise.resolve(login(values.email, values.password));
-      const redirect = location.state?.from?.pathname || "/dashboard";
+      const redirect = location.state?.from?.pathname || "/welcome";
       navigate(redirect, { replace: true });
     } catch (error) {
       setAuthError(error.message || "Login failed");
@@ -32,18 +33,24 @@ export default function Login() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 px-4 py-16">
+      {/* Background gradient */}
       <div className="pointer-events-none absolute inset-0 animate-gradient-slow bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.25),transparent_55%),radial-gradient(circle_at_bottom,_rgba(99,102,241,0.25),transparent_60%)]" />
+
+      {/* Login card */}
       <div className="relative z-10 flex w-full max-w-md flex-col gap-6 rounded-3xl border border-white/20 bg-white/80 p-8 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:shadow-[0_20px_60px_-20px_rgba(15,23,42,0.45)] dark:border-white/10 dark:bg-slate-900/80">
         <div className="space-y-2 text-center sm:text-left">
           <span className="inline-flex items-center rounded-full bg-brand-100 px-3 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-500/20 dark:text-brand-200">
             Use any email/password - mock login
           </span>
-          <h1 className="text-3xl font-semibold text-slate-900 transition duration-300 ease-out dark:text-slate-100">Welcome back</h1>
+          <h1 className="text-3xl font-semibold text-slate-900 transition duration-300 ease-out dark:text-slate-100">
+            Welcome back
+          </h1>
           <p className="text-sm text-slate-500 dark:text-slate-300">
             Sign in to access your dashboards, saved datasets, and chart library.
           </p>
         </div>
 
+        {/* Login form */}
         <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)} noValidate>
           <label className="group relative flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
             Email
@@ -56,7 +63,11 @@ export default function Login() {
                 pattern: { value: /\S+@\S+\.\S+/, message: "Enter a valid email address." }
               })}
             />
-            {errors.email ? <span className="text-xs text-red-500 dark:text-red-300">{errors.email.message}</span> : <span className="text-xs text-slate-400">We&apos;ll remember this locally.</span>}
+            {errors.email ? (
+              <span className="text-xs text-red-500 dark:text-red-300">{errors.email.message}</span>
+            ) : (
+              <span className="text-xs text-slate-400">We&apos;ll remember this locally.</span>
+            )}
           </label>
 
           <label className="group relative flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -70,14 +81,19 @@ export default function Login() {
                 minLength: { value: 4, message: "Password should be at least 4 characters." }
               })}
             />
-            {errors.password ? <span className="text-xs text-red-500 dark:text-red-300">{errors.password.message}</span> : <span className="text-xs text-slate-400">Hint: any non-empty password works.</span>}
+            {errors.password ? (
+              <span className="text-xs text-red-500 dark:text-red-300">{errors.password.message}</span>
+            ) : (
+              <span className="text-xs text-slate-400">Hint: any non-empty password works.</span>
+            )}
           </label>
 
-          {authError ? (
+          {/* Auth error message */}
+          {authError && (
             <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 shadow-sm dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
               {authError}
             </div>
-          ) : null}
+          )}
 
           <button
             type="submit"

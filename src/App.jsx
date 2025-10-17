@@ -7,6 +7,8 @@ import DataPage from "./pages/Data.jsx";
 import VisualizePage from "./pages/Visualize.jsx";
 import DashboardPage from "./pages/Dashboard.jsx";
 import NotFound from "./pages/NotFound.jsx";
+import ChatBot from "./ui/ChatBot.jsx";
+import PostLoginWelcome from "./pages/PostLoginWelcome.jsx";
 
 const navLinks = [
   { to: "/data", label: "Data" },
@@ -85,6 +87,7 @@ function Layout() {
       </header>
       <main className="w-full px-4 py-6 text-slate-800 transition-colors dark:text-slate-100 flex-1 min-h-0 flex flex-col overflow-auto">
         <Outlet />
+        <ChatBot />
       </main>
     </div>
   );
@@ -108,8 +111,16 @@ export default function App() {
   return (
     <Routes location={location} key={location.pathname}>
       <Route element={<Layout />}>
-        <Route path="/" element={<Navigate to={user ? "/dashboard" : "/login"} replace />} />
-        <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+        <Route path="/" element={<Navigate to={user ? "/welcome" : "/login"} replace />} />
+        <Route path="/login" element={user ? <Navigate to="/welcome" replace /> : <Login />} />
+        <Route
+          path="/welcome"
+          element={
+            <PrivateRoute>
+              <PostLoginWelcome />
+            </PrivateRoute>
+          }
+        />
         <Route
           path="/data"
           element={
