@@ -28,7 +28,7 @@ function Layout() {
               <span className="text-sm font-semibold">VD</span>
             </div>
             <div>
-              <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">VISUAL DASH</p>
+              <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">DATANAUT</p>
               <p className="text-xs text-slate-500 dark:text-slate-300">Data &gt; Charts &gt; Insights</p>
             </div>
           </Link>

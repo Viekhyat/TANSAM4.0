@@ -1,0 +1,45 @@
+type User @table {
+  displayName: String!
+  createdAt: Timestamp!
+  email: String
+  photoUrl: String
+}
+
+type Dataset @table {
+  user: User
+  name: String!
+  uploadDate: Timestamp!
+  fileType: String!
+  storagePath: String!
+  description: String
+  rowCount: Int
+  columnCount: Int
+}
+
+type Project @table {
+  user: User
+  name: String!
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
+  isPublic: Boolean!
+  description: String
+}
+
+type AnalysisStep @table {
+  project: Project
+  stepType: String!
+  order: Int!
+  createdAt: Timestamp!
+  configuration: String
+  result: String
+}
+
+type Visualization @table {
+  project: Project
+  analysisStep: AnalysisStep
+  name: String!
+  visualizationType: String!
+  createdAt: Timestamp!
+  configuration: String
+  imageUrl: String
+}
