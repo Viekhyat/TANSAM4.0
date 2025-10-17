@@ -21,7 +21,7 @@ function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100 transition-colors dark:bg-slate-900 w-full">
-      <header className="bg-white shadow-sm transition-colors dark:bg-slate-800 w-full">
+      <header className="relative z-40 w-full bg-white shadow-sm transition-colors dark:bg-slate-800">
         <div className="w-full flex items-center justify-between px-4 py-3">
           <Link to={user ? "/dashboard" : "/login"} className="flex items-center gap-2">
             <div className="rounded-md bg-brand-500 p-2 text-white">
@@ -83,7 +83,7 @@ function Layout() {
           )}
         </div>
       </header>
-      <main className="w-full px-4 py-6 text-slate-800 transition-colors dark:text-slate-100 flex-1 min-h-0 flex flex-col overflow-auto">
+      <main className="w-full px-4 py-6 text-slate-800 transition-colors dark:text-slate-100 flex-1 min-h-0 flex flex-col">
         <Outlet />
       </main>
     </div>

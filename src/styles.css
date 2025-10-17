@@ -6,6 +6,15 @@ body {
   @apply bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-100;
 }
 
+.glass-panel {
+  @apply bg-white/70 backdrop-blur-md ring-1 ring-white/40 transition-colors dark:bg-slate-800/60 dark:ring-slate-700/60;
+}
+
+.sticky-edge {
+  mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+}
+
 /* Custom scrollbar styles for better UX */
 .overflow-auto::-webkit-scrollbar {
   width: 8px;

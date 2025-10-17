@@ -63,49 +63,52 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 min-h-[calc(100vh-160px)]">
-      <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-100 transition-colors dark:bg-slate-800/80 dark:ring-slate-700">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="flex w-full flex-col gap-6 px-4 pb-10 pt-2 md:px-6 lg:px-8">
+      <section className="sticky top-[84px] z-30 glass-panel sticky-edge rounded-2xl p-4 md:p-6 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Dashboard Overview</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-300">Your saved insights update live with every dataset change.</p>
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Dashboard Overview</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-300">Your saved insights update live with every dataset change.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
               Live
             </div>
-            <button className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700">
+            <button className="rounded-full border border-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700">
               Refresh
             </button>
             <button
-              className="rounded-full bg-brand-500 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
+              className="rounded-full bg-brand-500 px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-600"
               onClick={() => navigate("/visualize")}
             >
               New chart
             </button>
           </div>
         </div>
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
+        <div className="mt-1.5 grid gap-1.5 md:grid-cols-3">
           {metrics.map((metric) => (
-            <div key={metric.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-4 transition-colors dark:border-slate-700 dark:bg-slate-800/50">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{metric.label}</p>
-              <div className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{formatNumber(metric.value)}</div>
-              <span className={`mt-3 inline-flex rounded-full px-3 py-1 text-[11px] font-semibold ${metric.color}`}>{metric.trend}</span>
+            <div key={metric.label} className="rounded-2xl bg-white/70 p-1 transition-colors backdrop-blur-sm dark:bg-slate-900/40">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{metric.label}</p>
+              <div className="mt-0.5 text-xl font-semibold text-slate-900 dark:text-slate-100">{formatNumber(metric.value)}</div>
+              <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${metric.color}`}>{metric.trend}</span>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <section aria-labelledby="saved-charts" className="mt-4 space-y-4 md:mt-6">
+        <h2 id="saved-charts" className="sr-only">
+          Saved charts
+        </h2>
+        <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Saved charts</h2>
+            <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">Saved charts</p>
             <p className="text-sm text-slate-500 dark:text-slate-300">Manage layouts, duplicate configurations, or jump back into edit mode.</p>
           </div>
           <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500 transition-colors dark:bg-slate-800/60 dark:text-slate-300">
             {chartList.length} charts
           </div>
-        </div>
+        </header>
         {chartList.length === 0 ? (
           <div className="flex h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white text-sm text-slate-500 transition-colors dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-300">
             No charts yet. Build your first visualization from the{" "}
@@ -115,18 +118,18 @@ export default function DashboardPage() {
             .
           </div>
         ) : (
-          <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 max-h-[calc(100vh-400px)] overflow-y-auto">
+          <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
             {chartList.map((chart) => {
               const dataset = datasets[chart.datasetId];
               const rows = dataset?.data || dataset?.rowsPreview || [];
               const chartData = buildChartData(rows, chart.chartType, chart.mappings, chart.options || {});
               return (
-                <div key={chart.id} className="flex flex-col gap-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-100 transition-colors dark:bg-slate-800/80 dark:ring-slate-700">
+                <article key={chart.id} className="glass-panel flex flex-col gap-3 rounded-2xl p-4 shadow-xl transition-colors md:p-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{chart.title}</h3>
                       <p className="text-xs text-slate-500 dark:text-slate-300">
-                        {dataset?.name || "Dataset missing"} • Updated {chart.updatedAt ? new Date(chart.updatedAt).toLocaleString() : "unknown"}
+                        {dataset?.name || "Dataset missing"} - Updated {chart.updatedAt ? new Date(chart.updatedAt).toLocaleString() : "unknown"}
                       </p>
                     </div>
                     <div className="flex gap-2 text-xs font-semibold">
@@ -150,7 +153,7 @@ export default function DashboardPage() {
                       </button>
                     </div>
                   </div>
-                  <div className="rounded-2xl bg-slate-50 p-4 transition-colors dark:bg-slate-800/50">
+                  <div className="flex-1 rounded-2xl bg-slate-50 p-4 transition-colors dark:bg-slate-800/50">
                     <ChartRenderer chart={chart} data={chartData} compact />
                   </div>
                   <div className="grid gap-3 text-xs text-slate-500 sm:grid-cols-3 dark:text-slate-300">
@@ -167,7 +170,7 @@ export default function DashboardPage() {
                       <span>{chart.options?.topN || 0}</span>
                     </div>
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
