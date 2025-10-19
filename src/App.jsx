@@ -7,6 +7,7 @@ import DataPage from "./pages/Data.jsx";
 import VisualizePage from "./pages/Visualize.jsx";
 import DashboardPage from "./pages/Dashboard.jsx";
 import NotFound from "./pages/NotFound.jsx";
+import logoImage from "./LOGO.jpg";
 
 const navLinks = [
   { to: "/data", label: "Data" },
@@ -21,24 +22,24 @@ function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100 transition-colors dark:bg-slate-900 w-full">
-      <header className="relative z-40 w-full bg-white shadow-sm transition-colors dark:bg-slate-800">
-        <div className="w-full flex items-center justify-between px-4 py-3">
+      <header className="relative z-40 w-full bg-gradient-to-b from-white/95 via-white/90 to-transparent shadow-md transition-colors dark:from-slate-900/90 dark:via-slate-900/95 dark:to-transparent">
+        <div className="w-full flex items-center justify-between px-5 py-5">
           <Link to={user ? "/dashboard" : "/login"} className="flex items-center gap-2">
-            <div className="rounded-md bg-brand-500 p-2 text-white">
-              <span className="text-sm font-semibold">VD</span>
+            <div className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-3xl border-2 border-white/80 bg-white/60 shadow-xl shadow-brand-900/30 dark:border-slate-200/60 dark:bg-slate-800/60">
+              <img src={logoImage} alt="Datanaut logo" className="h-full w-full object-cover" />
             </div>
             <div>
-              <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">DATANAUT</p>
-              <p className="text-xs text-slate-500 dark:text-slate-300">Data &gt; Charts &gt; Insights</p>
+              <p className="text-3xl font-semibold text-slate-900 dark:text-slate-100">DATANAUT</p>
+              <p className="text-lg text-slate-500 dark:text-slate-300">Data &gt; Charts &gt; Insights</p>
             </div>
           </Link>
           {user ? (
-            <nav className="flex items-center gap-4">
+            <nav className="flex items-center gap-6 text-lg">
               {navLinks.map((link) => (
                 <Link
                   key={link.to}
                   to={link.to}
-                  className={`rounded-full px-3 py-1 text-sm font-medium transition ${
+                  className={`rounded-full px-4 py-2 font-medium transition ${
                     location.pathname.startsWith(link.to)
                       ? "bg-brand-100 text-brand-800 dark:bg-brand-200/20 dark:text-brand-100"
                       : "text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
@@ -47,18 +48,18 @@ function Layout() {
                   {link.label}
                 </Link>
               ))}
-              <div className="flex items-center gap-3 pl-3">
+              <div className="flex items-center gap-4 pl-4 text-base">
                 <button
                   type="button"
                   onClick={toggleTheme}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                  className="rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   {theme === "dark" ? "Light mode" : "Dark mode"}
                 </button>
-                <span className="hidden text-sm text-slate-500 dark:text-slate-300 sm:inline-block">{user.email}</span>
+                <span className="hidden text-lg text-slate-500 dark:text-slate-300 sm:inline-block">{user.email}</span>
                 <button
                   onClick={logout}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                  className="rounded-full border border-slate-200 px-5 py-2 text-base font-medium text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   Logout
                 </button>
