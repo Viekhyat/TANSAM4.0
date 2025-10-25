@@ -2,3 +2,8 @@
 .env
 /package-lock.json
 /package.json
+.env.test
+.env.development
+.env.production
+.env.example
+.env.example.test
