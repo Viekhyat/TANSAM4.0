@@ -7,8 +7,8 @@ export async function sendChatMessage({
   summary = '',
   charts = null,
   datasets = null,
-  apiKey = '',
-  useMock = false,
+  apiKey = '', // Use environment variable instead of hardcoding
+  useMock = process.env.NODE_ENV === 'development',
   timeoutMs = 12000,
 } = {}) {
   // Use mock response if useMock is true
