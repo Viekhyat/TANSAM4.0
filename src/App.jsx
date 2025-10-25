@@ -7,6 +7,8 @@ import DataPage from "./pages/Data.jsx";
 import VisualizePage from "./pages/Visualize.jsx";
 import DashboardPage from "./pages/Dashboard.jsx";
 import NotFound from "./pages/NotFound.jsx";
+import ChatBot from "./ui/ChatBot.jsx";
+import PostLoginWelcome from "./pages/PostLoginWelcome.jsx";
 import logoImage from "./LOGO.jpg";
 
 const navLinks = [
@@ -95,6 +97,9 @@ function Layout() {
           <p className="mt-1">Developed by the DATANAUT Team</p>
         </div>
       </footer>
+      
+      {/* ChatBot for authenticated users */}
+      {user && <ChatBot />}
     </div>
   );
 }
@@ -117,8 +122,16 @@ export default function App() {
   return (
     <Routes location={location} key={location.pathname}>
       <Route element={<Layout />}>
-        <Route path="/" element={<Navigate to={user ? "/dashboard" : "/login"} replace />} />
-        <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+        <Route path="/" element={<Navigate to={user ? "/welcome" : "/login"} replace />} />
+        <Route path="/login" element={user ? <Navigate to="/welcome" replace /> : <Login />} />
+        <Route
+          path="/welcome"
+          element={
+            <PrivateRoute>
+              <PostLoginWelcome />
+            </PrivateRoute>
+          }
+        />
         <Route
           path="/data"
           element={
