@@ -212,10 +212,10 @@ export default function VisualizePage() {
   }, [chartType, getValues, meta, selectedDataset, setValue]);
 
   useEffect(() => {
-    if (!selectedDataset) {
+    if (!selectedDataset && !editingChart) {
       setSearchParams({});
     }
-  }, [selectedDataset, setSearchParams]);
+  }, [editingChart, selectedDataset, setSearchParams]);
 
   const datasetRows = selectedDataset?.data || selectedDataset?.rowsPreview || [];
 

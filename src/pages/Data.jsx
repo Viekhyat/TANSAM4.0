@@ -51,7 +51,17 @@ export default function DataPage() {
         rows: dataset.rowsPreview || [],
         headers: dataset.schema?.headers || [],
         types: dataset.schema?.types || [],
-        totalRows: dataset.data?.length ?? dataset.rowsPreview?.length ?? 0
+        totalRows:
+          dataset.originalRowCount ??
+          dataset.data?.length ??
+          dataset.rowsPreview?.length ??
+          0,
+        storedRows:
+          dataset.storedRowCount ??
+          dataset.data?.length ??
+          dataset.rowsPreview?.length ??
+          0,
+        fullDataStored: !!dataset.fullDataStored
       };
       return acc;
     }, {});
@@ -252,9 +262,14 @@ export default function DataPage() {
     performSave().catch(() => {});
   };
 
+  const toggleDatasetPreview = (datasetId) => {
+    setExpandedId((current) => (current === datasetId ? null : datasetId));
+  };
+
   const onDeleteDataset = (id, name) => {
     if (window.confirm(`Delete dataset "${name}"? This also removes linked charts.`)) {
       deleteDataset(id);
+      setExpandedId((current) => (current === id ? null : current));
     }
   };
 
@@ -380,24 +395,67 @@ export default function DataPage() {
               <p className="rounded-xl bg-slate-50 dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-500 dark:text-slate-300">No datasets saved yet.</p>
             ) : (
               <div className="flex flex-col gap-3">
-                {savedDatasets.map((dataset) => (
-                  <div key={dataset.id} className="rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{dataset.name}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-300">
-                          {dataset.rowsPreview?.length || 0} rows · {dataset.schema?.headers?.length || 0} columns
-                        </p>
+                {savedDatasets.map((dataset) => {
+                  const isExpanded = expandedId === dataset.id;
+                  const preview = datasetPreviewMap[dataset.id];
+                  const totalRows = preview?.totalRows ?? dataset.rowsPreview?.length ?? 0;
+                  const storedRows = preview?.storedRows ?? dataset.rowsPreview?.length ?? 0;
+                  const headerCount = dataset.schema?.headers?.length ?? 0;
+                  return (
+                    <div key={dataset.id} className="rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{dataset.name || "Untitled dataset"}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-300">
+                            {totalRows.toLocaleString()} rows x {headerCount.toLocaleString()} columns
+                          </p>
+                          {preview?.fullDataStored ? (
+                            <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                              Last {storedRows.toLocaleString()} rows stored from the original dataset.
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <button
+                            onClick={() => toggleDatasetPreview(dataset.id)}
+                            className="rounded-full border border-transparent px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-200 hover:bg-white/70 dark:text-slate-200"
+                          >
+                            {isExpanded ? "Hide preview" : "Show preview"}
+                          </button>
+                          <button
+                            onClick={() => onDeleteDataset(dataset.id, dataset.name)}
+                            className="rounded-full border border-transparent px-3 py-1 text-xs font-semibold text-red-500 transition hover:border-red-100 hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => onDeleteDataset(dataset.id, dataset.name)}
-                        className="rounded-full border border-transparent px-3 py-1 text-xs font-semibold text-red-500 transition hover:border-red-100 hover:bg-red-50"
-                      >
-                        Delete
-                      </button>
+                      {isExpanded ? (
+                        preview ? (
+                          <div className="mt-3 space-y-2">
+                            <DataPreviewTable
+                              headers={preview.headers}
+                              types={preview.types}
+                              rows={preview.rows.slice(0, 20)}
+                              compact
+                              maxHeight={240}
+                              totalRows={preview.totalRows}
+                            />
+                            {preview.totalRows > preview.rows.length ? (
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                Showing preview rows only. Re-import with &ldquo;Store full dataset&rdquo; enabled to persist additional rows.
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-3 py-2 text-[11px] text-slate-500 dark:border-slate-700 dark:text-slate-300">
+                            Preview unavailable for this dataset.
+                          </p>
+                        )
+                      ) : null}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
