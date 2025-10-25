@@ -67,14 +67,14 @@ export default function Login() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 px-4 py-16">
+    <div className="login-container relative flex h-screen items-start justify-center overflow-hidden bg-slate-950 px-4 pt-8 pb-8">
       <div className="pointer-events-none absolute inset-0 animate-gradient-slow bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.25),transparent_55%),radial-gradient(circle_at_bottom,_rgba(99,102,241,0.25),transparent_60%)]" />
-      <div className="relative z-10 flex w-full max-w-md flex-col gap-6 rounded-3xl border border-white/20 bg-white/80 p-8 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:shadow-[0_20px_60px_-20px_rgba(15,23,42,0.45)] dark:border-white/10 dark:bg-slate-900/80">
+      <div className="login-form relative z-10 flex w-full max-w-xs flex-col gap-2 rounded-2xl border border-white/20 bg-white/80 p-3 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:shadow-[0_20px_60px_-20px_rgba(15,23,42,0.45)] dark:border-white/10 dark:bg-slate-900/80 sm:max-w-sm sm:gap-3 sm:p-4 md:max-w-md md:gap-4 md:p-6">
         <div className="space-y-2 text-center sm:text-left">
           <span className="inline-flex items-center rounded-full bg-brand-100 px-3 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-500/20 dark:text-brand-200">
             {isDemoMode ? "Demo Mode - No Firebase required" : "Real authentication via Firebase"}
           </span>
-          <h1 className="text-3xl font-semibold text-slate-900 transition duration-300 ease-out dark:text-slate-100">
+          <h1 className="text-xl font-semibold text-slate-900 transition duration-300 ease-out dark:text-slate-100 sm:text-2xl md:text-3xl">
             {isRegister ? "Create account" : "Welcome back"}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-300">
@@ -90,13 +90,13 @@ export default function Login() {
           </p>
         </div>
 
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)} noValidate>
+        <form className="flex flex-col gap-2" onSubmit={handleSubmit(onSubmit)} noValidate>
           <label className="group relative flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
             Email
             <input
               type="email"
               placeholder="you@example.com"
-              className="rounded-xl border border-slate-200/80 bg-white/70 px-4 py-3 text-sm text-slate-900 shadow-sm transition-all duration-200 focus:-translate-y-0.5 focus:border-brand-400 focus:shadow-[0_0_0_4px_rgba(59,130,246,0.12)] focus:outline-none dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100"
+              className="rounded-lg border border-slate-200/80 bg-white/70 px-2 py-1.5 text-sm text-slate-900 shadow-sm transition-all duration-200 focus:-translate-y-0.5 focus:border-brand-400 focus:shadow-[0_0_0_4px_rgba(59,130,246,0.12)] focus:outline-none dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100 sm:px-3 sm:py-2 md:px-4 md:py-3"
               {...register("email", {
                 required: "Email is required.",
                 pattern: { value: /\S+@\S+\.\S+/, message: "Enter a valid email address." }
@@ -110,7 +110,7 @@ export default function Login() {
             <input
               type="password"
               placeholder="********"
-              className="rounded-xl border border-slate-200/80 bg-white/70 px-4 py-3 text-sm text-slate-900 shadow-sm transition-all duration-200 focus:-translate-y-0.5 focus:border-brand-400 focus:shadow-[0_0_0_4px_rgba(59,130,246,0.12)] focus:outline-none dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100"
+              className="rounded-lg border border-slate-200/80 bg-white/70 px-2 py-1.5 text-sm text-slate-900 shadow-sm transition-all duration-200 focus:-translate-y-0.5 focus:border-brand-400 focus:shadow-[0_0_0_4px_rgba(59,130,246,0.12)] focus:outline-none dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100 sm:px-3 sm:py-2 md:px-4 md:py-3"
               {...register("password", {
                 required: "Password is required.",
                 minLength: { value: 6, message: "Password should be at least 6 characters." }
@@ -134,7 +134,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="mt-2 inline-flex items-center justify-center gap-2 rounded-full bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/30 transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 disabled:cursor-not-allowed disabled:bg-brand-300 disabled:shadow-none"
+            className="mt-2 inline-flex items-center justify-center gap-2 rounded-full bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/30 transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 disabled:cursor-not-allowed disabled:bg-brand-300 disabled:shadow-none sm:px-4 sm:py-2 md:px-5 md:py-3"
           >
             {isSubmitting ? (
               <>
@@ -158,7 +158,7 @@ export default function Login() {
         <button
           type="button"
           onClick={handleGoogleLogin}
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-400 hover:text-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100"
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-400 hover:text-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100 sm:px-4 sm:py-2 md:px-5 md:py-3"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -185,13 +185,7 @@ export default function Login() {
           Continue with Google
         </button>
 
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {isDemoMode 
-              ? "Demo mode: Authentication is simulated. Enable Email/Password and Google auth in Firebase Console for real authentication."
-              : "Authentication is handled via Firebase using email/password or Google. You can log out anytime from the top-right menu."
-            }
-          </p>
+        <div className="flex items-center justify-center">
           <button
             onClick={() => setIsRegister((s) => !s)}
             className="text-sm text-brand-600 hover:underline"

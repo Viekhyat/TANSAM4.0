@@ -89,3 +89,24 @@ main > * {
   height: 100%;
   min-height: 0;
 }
+
+/* Login page specific height fixes */
+@media (max-height: 600px) {
+  .login-container {
+    min-height: 500px;
+    padding: 1rem;
+  }
+  
+  .login-form {
+    gap: 0.75rem;
+    padding: 1rem;
+  }
+}
+
+/* Ensure login page doesn't overflow on very small screens */
+@media (max-height: 500px) {
+  .login-container {
+    min-height: 400px;
+    padding: 0.5rem;
+  }
+}
