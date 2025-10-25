@@ -7,7 +7,7 @@ export async function sendChatMessage({
   summary = '',
   charts = null,
   datasets = null,
-  apiKey = null,
+  apiKey = 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,
   timeoutMs = 12000,
 } = {}) {
   // Only call OpenAI GPT-4 API
