@@ -48,7 +48,7 @@ const makeDomId = (chartId) => {
   return `chart-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 };
 
-export default function ChartRenderer({ chart, data = [], compact = false }) {
+export default function ChartRenderer({ chart, data = [], compact = false, skipValidation = false }) {
   const containerRef = useRef(null);
   const chartDomIdRef = useRef(makeDomId(chart?.id));
   const [exporting, setExporting] = useState(false);
@@ -196,7 +196,7 @@ export default function ChartRenderer({ chart, data = [], compact = false }) {
     if (["line", "bar", "area"].includes(chartType)) {
       const xField = mappings.xField;
       const yFields = mappings.yFields || [];
-      if (!ensureFieldsPresent([xField]) || yFields.length === 0) {
+      if (!skipValidation && (!ensureFieldsPresent([xField]) || yFields.length === 0)) {
         return renderPlaceholder("Select X and at least one Y field to preview.");
       }
       if (!safeData.length) {
@@ -231,8 +231,8 @@ export default function ChartRenderer({ chart, data = [], compact = false }) {
     if (chartType === "scatter") {
       const xField = mappings.xField;
       const yField = mappings.yField;
-      if (!ensureFieldsPresent([xField, yField])) {
-        return renderPlaceholder("Select numeric X and Y fields to preview.");
+      if (!skipValidation && !ensureFieldsPresent([xField, yField])) {
+        return renderPlaceholder("Select X and Y fields to preview.");
       }
       if (!safeData.length) {
         return renderPlaceholder("Unable to plot scatter data. Check that chosen fields are numeric.");
@@ -254,8 +254,8 @@ export default function ChartRenderer({ chart, data = [], compact = false }) {
     if (["pie", "donut"].includes(chartType)) {
       const categoryField = mappings.categoryField;
       const valueField = mappings.valueField;
-      if (!ensureFieldsPresent([categoryField, valueField])) {
-        return renderPlaceholder("Pick a category and a numeric value field to preview.");
+      if (!skipValidation && !ensureFieldsPresent([categoryField, valueField])) {
+        return renderPlaceholder("Select category and value fields to preview.");
       }
       if (!safeData.length) {
         return renderPlaceholder("No values available for the selected fields.");
@@ -288,7 +288,7 @@ export default function ChartRenderer({ chart, data = [], compact = false }) {
     if (chartType === "radar") {
       const angleField = mappings.angleField;
       const radiusField = mappings.radiusField;
-      if (!ensureFieldsPresent([angleField, radiusField])) {
+      if (!skipValidation && !ensureFieldsPresent([angleField, radiusField])) {
         return renderPlaceholder("Select a category for the angle and numeric field for the radius.");
       }
       if (!safeData.length) {

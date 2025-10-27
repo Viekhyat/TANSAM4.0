@@ -370,8 +370,15 @@ export default function DataPage() {
           </div>
           <div className="flex-1 min-h-0 overflow-hidden">
             {activePreview ? (
-              <div className="h-full overflow-auto">
-                <DataPreviewTable headers={activePreview.headers} types={activePreview.types} rows={activePreview.rows.slice(0, 50)} />
+              <div className="h-full">
+                <DataPreviewTable
+  headers={activePreview.headers}
+  types={activePreview.types}
+  rows={activePreview.rows.slice(0, 50)}
+  compact
+  maxHeight={360}
+  totalRows={activePreview.rows?.length || 0}
+/>
               </div>
             ) : (
               <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 text-sm text-slate-500 dark:text-slate-300">
@@ -471,3 +478,5 @@ export default function DataPage() {
     </div>
   );
 }
+
+
