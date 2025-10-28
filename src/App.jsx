@@ -14,9 +14,7 @@ import Login from "./pages/Login.jsx";
 import Home from "./pages/Home.jsx";
 import DataPage from "./pages/Data.jsx";
 import VisualizePage from "./pages/Visualize.jsx";
-import DashboardPage from "./pages/Dashboard.jsx";import VisualizePage from "./pages/Visualize.jsx";
 import DashboardPage from "./pages/Dashboard.jsx";
-
 import Dashboard from "./pages/Dashboard.jsx"; // ✅ fixed import
 import NotFound from "./pages/NotFound.jsx";
 import ChatBot from "./ui/ChatBot.jsx";
