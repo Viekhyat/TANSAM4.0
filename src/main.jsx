@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import "./styles.css";
+import "./styles/liquid.css";
 
 import { AuthProvider } from "./providers/AuthContext.jsx";
 import { StoreProvider } from "./providers/StoreContext.jsx";

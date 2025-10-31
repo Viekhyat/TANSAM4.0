@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import GlassCard from "../ui/GlassCard.jsx";
 import ChartRenderer from "../ui/ChartRenderer.jsx";
+import DynamicChart3D from "../ui/DynamicChart3D.jsx";
 
 const BACKEND_URL = "http://localhost:8085"; // change if backend runs elsewhere
 
@@ -18,6 +20,7 @@ export default function DynamicVisualizePage() {
   const isEditing = !!id;
   
   const [chartType, setChartType] = useState("line");
+  const [chartDimension, setChartDimension] = useState("2d");
   const [dataSource, setDataSource] = useState("");
   const [dataFields, setDataFields] = useState([]);
   const [selectedFields, setSelectedFields] = useState({
@@ -64,6 +67,7 @@ export default function DynamicVisualizePage() {
               xField: data.chart.xField,
               yField: data.chart.yField
             });
+            setChartDimension(data.chart.dimension || data.chart.options?.dimension || "2d");
           }
         } catch (err) {
           console.error("Error fetching chart config:", err);
@@ -121,6 +125,12 @@ export default function DynamicVisualizePage() {
     fetchData();
   }, [dataSource]);
 
+  useEffect(() => {
+    if (chartDimension === "3d" && chartType !== "bar") {
+      setChartType("bar");
+    }
+  }, [chartDimension, chartType]);
+
   const handleSave = async () => {
     if (!chartTitle || !chartType || !dataSource || !selectedFields.xField || !selectedFields.yField) {
       setError("Please fill in all required fields.");
@@ -132,6 +142,7 @@ export default function DynamicVisualizePage() {
         title: chartTitle,
         type: chartType,
         dataSource,
+        dimension: chartDimension,
         xField: selectedFields.xField,
         yField: selectedFields.yField
       };
@@ -167,25 +178,26 @@ export default function DynamicVisualizePage() {
     navigate("/dynamic-dashboard");
   };
 
-  const transformedData = previewData.map(item => ({
-    x: item[selectedFields.xField],
-    y: item[selectedFields.yField]
-  }));
-
   return (
     <div className="flex w-full flex-col gap-6 px-4 pb-10 pt-2 md:px-6 lg:px-8">
-      <section className="sticky top-[84px] z-30 glass-panel sticky-edge rounded-2xl p-4 md:p-6 shadow-xl">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Dynamic Visualization</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-300">Create real-time visualizations from dynamic data sources.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-              Live Preview
+      <section className="sticky top-[84px] z-30">
+        <GlassCard className="sticky-edge shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                {isEditing ? "Edit Dynamic Visualization" : "Create Dynamic Visualization"}
+              </h1>
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                Connect your live data and build a chart in minutes.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="glass-hover rounded-full border border-emerald-400/40 bg-emerald-100/80 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 transition dark:border-emerald-300/20 dark:bg-emerald-500/20 dark:text-emerald-200">
+                Live Preview
+              </div>
             </div>
           </div>
-        </div>
+        </GlassCard>
       </section>
 
       {error && (
@@ -196,7 +208,8 @@ export default function DynamicVisualizePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Configuration Panel */}
-        <section className="glass-panel rounded-2xl p-4 shadow-xl transition-colors md:p-6">
+        <section className="rounded-2xl">
+          <GlassCard className="h-full shadow-xl transition-colors">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Chart Configuration</h2>
           
           <div className="space-y-4">
@@ -221,22 +234,69 @@ export default function DynamicVisualizePage() {
                 Chart Type
               </label>
               <div className="grid grid-cols-2 gap-2">
-                {chartTypes.map((type) => (
-                  <button
-                    key={type.value}
-                    type="button"
-                    onClick={() => setChartType(type.value)}
-                    className={`flex flex-col items-center justify-center rounded-lg border p-2 text-center text-xs transition ${
-                      chartType === type.value
-                        ? "border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-900/30 dark:text-brand-300"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600"
-                    }`}
-                  >
-                    <span className="font-medium">{type.label}</span>
-                    <span className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">{type.description}</span>
-                  </button>
-                ))}
+                {chartTypes.map((type) => {
+                  const isDisabled = chartDimension === "3d" && type.value !== "bar";
+                  const isActive = chartType === type.value;
+                  return (
+                    <button
+                      key={type.value}
+                      type="button"
+                      onClick={() => {
+                        if (!isDisabled) {
+                          setChartType(type.value);
+                        }
+                      }}
+                      disabled={isDisabled}
+                      className={`flex flex-col items-center justify-center rounded-lg border p-2 text-center text-xs transition ${
+                        isActive
+                          ? "border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-900/30 dark:text-brand-300"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600"
+                      } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+                    >
+                      <span className="font-medium">{type.label}</span>
+                      <span className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">{type.description}</span>
+                    </button>
+                  );
+                })}
               </div>
+            </div>
+
+            {/* Chart Dimension */}
+            <div>
+              <span className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Chart Dimension</span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setChartDimension("2d")}
+                  className={`rounded-lg border px-3 py-2 text-sm transition ${
+                    chartDimension === "2d"
+                      ? "border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-900/30 dark:text-brand-200"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600"
+                  }`}
+                >
+                  2D Projection
+                  <span className="mt-1 block text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                    Standard charts via Recharts
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartDimension("3d")}
+                  className={`rounded-lg border px-3 py-2 text-sm transition ${
+                    chartDimension === "3d"
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-900/30 dark:text-indigo-200"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600"
+                  }`}
+                >
+                  3D Projection
+                  <span className="mt-1 block text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                    Experimental liquid 3D bars
+                  </span>
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                3D visuals require at least one numeric value field.
+              </p>
             </div>
             
             {/* Data Source */}
@@ -305,103 +365,141 @@ export default function DynamicVisualizePage() {
             <div className="flex justify-end gap-2 pt-4">
               <button
                 onClick={handleCancel}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                className="glass-hover rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-slate-200/20 dark:bg-slate-800/40 dark:text-slate-300 dark:hover:bg-slate-800/60 dark:focus-visible:ring-offset-slate-900"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500"
+                className="glass-hover rounded-full border border-transparent bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:bg-brand-600 dark:hover:bg-brand-500 dark:focus-visible:ring-offset-slate-900"
               >
                 {isEditing ? "Update Chart" : "Create Chart"}
               </button>
             </div>
           </div>
+          </GlassCard>
         </section>
         
         {/* Preview Panel */}
-        <section className="glass-panel rounded-2xl p-4 shadow-xl transition-colors md:p-6 lg:col-span-2">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Chart Preview</h2>
-          
-          {loading ? (
-            <div className="flex h-64 items-center justify-center">
-              <div className="text-center">
-                <div className="mb-2 h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-blue-500 mx-auto"></div>
-                <p className="text-slate-500 dark:text-slate-400">Loading data...</p>
+        <section className="lg:col-span-2">
+          <GlassCard className="h-full shadow-xl transition-colors">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Chart Preview</h2>
+
+            {loading ? (
+              <div className="flex h-64 items-center justify-center">
+                <div className="text-center">
+                  <div className="mb-2 h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-blue-500 mx-auto"></div>
+                  <p className="text-slate-500 dark:text-slate-400">Loading data...</p>
+                </div>
               </div>
-            </div>
-          ) : previewData.length === 0 ? (
-            <div className="flex h-64 items-center justify-center">
-              <div className="text-center">
-                <p className="text-slate-500 dark:text-slate-400">No data available. Please select a data source.</p>
+            ) : previewData.length === 0 ? (
+              <div className="flex h-64 items-center justify-center">
+                <div className="text-center">
+                  <p className="text-slate-500 dark:text-slate-400">No data available. Please select a data source.</p>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="h-96">
-              <ChartRenderer
-                chart={{ 
-                  chartType: chartType,
-                  title: chartTitle
-                }}
-                data={transformedData}
-              />
-            </div>
-          )}
-          
-          {/* Data Sample */}
-          {previewData.length > 0 && (
-            <div className="mt-6">
-              <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Data Sample</h3>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-                  <thead>
-                    <tr>
-                      {dataFields.slice(0, 5).map((field) => (
-                        <th
-                          key={field}
-                          className="px-3 py-2 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider"
-                        >
-                          {field}
-                        </th>
-                      ))}
-                      {dataFields.length > 5 && (
-                        <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                          ...
-                        </th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                    {previewData.slice(0, 5).map((row, rowIndex) => (
-                      <tr key={rowIndex} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+            ) : (
+              <>
+                {chartDimension === "3d" ? (
+                  <div className="flex h-96 items-center justify-center">
+                    <DynamicChart3D
+                      chart={{
+                        id: isEditing ? id : "preview",
+                        title: chartTitle,
+                        dataSource,
+                        xField: selectedFields.xField,
+                        yField: selectedFields.yField,
+                        dimension: chartDimension
+                      }}
+                      data={previewData}
+                      wrapInCard={false}
+                      showActions={false}
+                      showHeader={false}
+                      showMeta={false}
+                      className="w-full"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-96">
+                    <ChartRenderer
+                      chart={{
+                        chartType,
+                        title: chartTitle,
+                        mappings: {
+                          xField: selectedFields.xField,
+                          yField: selectedFields.yField,
+                          yFields: selectedFields.yField ? [selectedFields.yField] : [],
+                          categoryField: selectedFields.xField,
+                          valueField: selectedFields.yField,
+                          angleField: selectedFields.xField,
+                          radiusField: selectedFields.yField
+                        },
+                        options: {
+                          dimension: chartDimension
+                        }
+                      }}
+                      data={previewData}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Data Sample */}
+            {previewData.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Data Sample</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                    <thead>
+                      <tr>
                         {dataFields.slice(0, 5).map((field) => (
-                          <td
-                            key={`${rowIndex}-${field}`}
-                            className="px-3 py-2 text-xs text-slate-700 dark:text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]"
+                          <th
+                            key={field}
+                            className="px-3 py-2 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider"
                           >
-                            {row[field] !== null && row[field] !== undefined ? String(row[field]) : "null"}
-                          </td>
+                            {field}
+                          </th>
                         ))}
                         {dataFields.length > 5 && (
-                          <td className="px-3 py-2 text-xs text-slate-700 dark:text-slate-300">...</td>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                            ...
+                          </th>
                         )}
                       </tr>
-                    ))}
-                    {previewData.length > 5 && (
-                      <tr>
-                        <td
-                          colSpan={Math.min(dataFields.length, 6)}
-                          className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400 text-center"
-                        >
-                          {previewData.length - 5} more rows
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                      {previewData.slice(0, 5).map((row, rowIndex) => (
+                        <tr key={rowIndex} className="hover:bg-white/10 dark:hover:bg-white/5">
+                          {dataFields.slice(0, 5).map((field) => (
+                            <td
+                              key={`${rowIndex}-${field}`}
+                              className="max-w-[150px] overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 text-xs text-slate-700 dark:text-slate-300"
+                            >
+                              {row[field] !== null && row[field] !== undefined ? String(row[field]) : "null"}
+                            </td>
+                          ))}
+                          {dataFields.length > 5 && (
+                            <td className="px-3 py-2 text-xs text-slate-700 dark:text-slate-300">...</td>
+                          )}
+                        </tr>
+                      ))}
+                      {previewData.length > 5 && (
+                        <tr>
+                          <td
+                            colSpan={Math.min(dataFields.length, 6)}
+                            className="px-3 py-2 text-center text-xs text-slate-500 dark:text-slate-400"
+                          >
+                            {previewData.length - 5} more rows
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </GlassCard>
         </section>
       </div>
     </div>
