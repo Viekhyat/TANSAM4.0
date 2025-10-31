@@ -7,6 +7,7 @@ import DataPage from "./pages/Data.jsx";
 import VisualizePage from "./pages/Visualize.jsx";
 import DashboardPage from "./pages/Dashboard.jsx";
 import NotFound from "./pages/NotFound.jsx";
+import Chatbot from "./ui/Chatbot.jsx";
 
 const navLinks = [
   { to: "/data", label: "Data" },
@@ -24,11 +25,10 @@ function Layout() {
       <header className="bg-white shadow-sm transition-colors dark:bg-slate-800 w-full">
         <div className="w-full flex items-center justify-between px-4 py-3">
           <Link to={user ? "/dashboard" : "/login"} className="flex items-center gap-2">
-            <div className="rounded-md bg-brand-500 p-2 text-white">
-              <span className="text-sm font-semibold">VD</span>
-            </div>
+            {/* logo (served from public/) */}
+            <img src="/logo.jpg" alt="Datanaut logo" className="app-logo rounded-md" />
             <div>
-              <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">VISUAL DASH</p>
+              <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">DATANAUT</p>
               <p className="text-xs text-slate-500 dark:text-slate-300">Data &gt; Charts &gt; Insights</p>
             </div>
           </Link>
@@ -86,6 +86,7 @@ function Layout() {
       <main className="w-full px-4 py-6 text-slate-800 transition-colors dark:text-slate-100 flex-1 min-h-0 flex flex-col overflow-auto">
         <Outlet />
       </main>
+      <Chatbot />
     </div>
   );
 }
@@ -136,6 +137,11 @@ export default function App() {
         />
         <Route path="*" element={<NotFound />} />
       </Route>
+      {/* place Chatbot at root so it's available across pages */}
+      <Route
+        path="*"
+        element={null}
+      />
     </Routes>
   );
 }

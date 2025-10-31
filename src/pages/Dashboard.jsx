@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useStore } from "../providers/StoreContext.jsx";
 import ChartRenderer from "../ui/ChartRenderer.jsx";
 import { buildChartData } from "../utils/chartData.js";
+import CreatePieButton from "../ui/CreatePieButton.jsx";
 
 const formatNumber = (value) => {
   if (value >= 1000) {
@@ -83,6 +84,7 @@ export default function DashboardPage() {
             >
               New chart
             </button>
+            <CreatePieButton className="hidden sm:flex" />
           </div>
         </div>
         <div className="mt-6 grid gap-4 md:grid-cols-3">
