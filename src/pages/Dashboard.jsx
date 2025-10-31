@@ -77,12 +77,6 @@ export default function DashboardPage() {
             <button className="rounded-full border border-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700">
               Refresh
             </button>
-            <button
-              className="rounded-full bg-brand-500 px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-600"
-              onClick={() => navigate("/visualize")}
-            >
-              New chart
-            </button>
           </div>
         </div>
         <div className="mt-1.5 grid gap-1.5 md:grid-cols-3">
@@ -111,11 +105,13 @@ export default function DashboardPage() {
         </header>
         {chartList.length === 0 ? (
           <div className="flex h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white text-sm text-slate-500 transition-colors dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-300">
-            No charts yet. Build your first visualization from the{" "}
-            <button onClick={() => navigate("/visualize")} className="font-semibold text-brand-500 underline underline-offset-2">
-              visualize page
+            <p className="mb-3">No charts yet. Create your first visualization.</p>
+            <button 
+              onClick={() => navigate("/visualize")} 
+              className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 flex items-center gap-2"
+            >
+              <span className="text-lg">+</span> New Chart
             </button>
-            .
           </div>
         ) : (
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
@@ -173,6 +169,23 @@ export default function DashboardPage() {
                 </article>
               );
             })}
+            <article className="glass-panel flex flex-col items-center justify-center gap-3 rounded-2xl p-4 shadow-xl transition-colors md:p-6 border-2 border-dashed border-slate-200 dark:border-slate-600 h-[300px]">
+              <div className="rounded-full bg-brand-100 p-4 dark:bg-brand-500/20">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-brand-500">
+                  <path d="M12 5v14M5 12h14"></path>
+                </svg>
+              </div>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Create New Chart</h3>
+              <p className="text-xs text-center text-slate-500 dark:text-slate-300">
+                Add a new visualization to your dashboard
+              </p>
+              <button
+                onClick={() => navigate("/visualize")}
+                className="mt-2 rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
+              >
+                New Chart
+              </button>
+            </article>
           </div>
         )}
       </section>

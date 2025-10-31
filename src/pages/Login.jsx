@@ -47,7 +47,7 @@ export default function Login() {
       } else {
         await login(values.email, values.password);
       }
-      const redirect = location.state?.from?.pathname || "/dashboard";
+      const redirect = location.state?.from?.pathname || "/Home.jsx";
       navigate(redirect, { replace: true });
     } catch (error) {
       setAuthError(error?.message || "Authentication failed");
@@ -59,7 +59,7 @@ export default function Login() {
     setStatusMessage("");
     try {
       await loginWithGoogle();
-      const redirect = location.state?.from?.pathname || "/dashboard";
+      const redirect = location.state?.from?.pathname || "/src/pages/Home.jsx";
       navigate(redirect, { replace: true });
     } catch (error) {
       setAuthError(error?.message || "Google sign-in failed");
