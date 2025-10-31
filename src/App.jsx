@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import {
   Link,
   Navigate,
@@ -14,8 +14,10 @@ import Login from "./pages/Login.jsx";
 import Home from "./pages/Home.jsx";
 import DataPage from "./pages/Data.jsx";
 import VisualizePage from "./pages/Visualize.jsx";
-import DashboardPage from "./pages/Dashboard.jsx";
-import Dashboard from "./pages/Dashboard.jsx"; // ✅ fixed import
+import DynamicDataPage from "./pages/DynamicData.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
+import DynamicDashboard from "./pages/DynamicDashboard.jsx"; 
+import DynamicVisualizePage from "./pages/DynamicVisualize.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import ChatBot from "./ui/ChatBot.jsx";
 import logoImage from "./LOGO.jpg";
@@ -23,9 +25,16 @@ import logoImage from "./LOGO.jpg";
 // ✅ Centralized navigation
 const navLinks = [
   { to: "/home", label: "Home" },
-  { to: "/data", label: "Data" },
-  { to: "/visualize", label: "Visualize" },
-  { to: "/dashboard", label: "Dashboard" },
+  { to: "/data", label: "Static Data" },
+  { to: "/dashboard", label: "Static Dashboard" },
+  { to: "/dynamic-data", label: "Dynamic Data" },
+  { to: "/dynamic-dashboard", label: "Dynamic Dashboard" },
+];
+
+// Navigation routes for visualization pages
+const visualizationRoutes = [
+  //{ to: "/dynamic-visualize", label: "Dynamic Visualize" },
+  //{ to: "/visualize", label: "Visualize" }
 ];
 
 function Layout() {
@@ -94,6 +103,21 @@ function Layout() {
           {user ? (
             <nav className="flex items-center gap-6 text-lg">
               {navLinks.map((link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className={`rounded-full px-4 py-2 font-medium transition ${
+                    location.pathname.startsWith(link.to)
+                      ? "bg-blue-100 text-blue-800 dark:bg-blue-200/20 dark:text-blue-100"
+                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+              
+              {/* Add visualization links to the main navigation */}
+              {visualizationRoutes.map((link) => (
                 <Link
                   key={link.to}
                   to={link.to}
@@ -231,6 +255,30 @@ export default function App() {
           element={
             <PrivateRoute>
               <Dashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/dynamic-data"
+          element={
+            <PrivateRoute>
+              <DynamicDataPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/dynamic-dashboard"
+          element={
+            <PrivateRoute>
+              <DynamicDashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/dynamic-visualize"
+          element={
+            <PrivateRoute>
+              <DynamicVisualizePage />
             </PrivateRoute>
           }
         />
