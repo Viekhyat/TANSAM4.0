@@ -122,10 +122,30 @@ export default function DynamicData() {
   const [form, setForm] = useState({ name: "", config: {} });
   const [selectedId, setSelectedId] = useState(null);
   const [cached, setCached] = useState([]);
+  const [rawOpen, setRawOpen] = useState(false);
+  const [rawLoading, setRawLoading] = useState(false);
+  const [rawJson, setRawJson] = useState(null);
   const wsRef = useRef(null);
   const lastUpdateRef = useRef(Date.now());
   const BACKEND = "http://localhost:8085";
   const WS_URL = window.location.protocol === 'https:' ? 'wss://localhost:8085' : 'ws://localhost:8085';
+
+  const saveDataToFile = () => {
+    try {
+      const blob = new Blob([JSON.stringify({ id: selectedId, data: cached }, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `data-${selectedId || 'unknown'}-${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(`Failed to save data: ${e.message}`);
+    }
+  };
 
   async function fetchConnections() {
     try {
@@ -206,6 +226,10 @@ export default function DynamicData() {
         form.config.brokerUrl = (form.config.brokerUrl || "wss://localhost") + ":" + form.config.port;
       }
     }
+  // Ensure SQL type default is set if user didn't change the dropdown
+  if (formType === "sql" && !form.config.type) {
+    form.config.type = "mysql";
+  }
     const payload = { type: formType, config: { ...form.config, name: form.name } };
     // DEBUG: Show values sent
     console.log("Add Connection payload:", payload);
@@ -254,6 +278,19 @@ export default function DynamicData() {
       case "sql":
         return (
           <>
+            <div className="mb-3">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">SQL Type</label>
+              <select
+                value={form.config.type || "mysql"}
+                onChange={(e) => setConfigField("type", e.target.value)}
+                className={inputStyle}
+              >
+                <option value="mysql">MySQL</option>
+                <option value="sqlite">SQLite</option>
+                <option value="postgres">PostgreSQL</option>
+                <option value="mariadb">MariaDB</option>
+              </select>
+            </div>
             <div className="mb-3">
               <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Host</label>
               <input
@@ -406,7 +443,7 @@ export default function DynamicData() {
                 className={inputStyle}
               >
                 <option value="mqtt">MQTT</option>
-                <option value="sql">SQL (MySQL)</option>
+                <option value="sql">SQL</option>
                 <option value="http">HTTP API</option>
                 <option value="serial">Serial</option>
               </select>
@@ -434,14 +471,21 @@ export default function DynamicData() {
                 {connections.map((c) => (
                   <div
                     key={c.id}
-                    className={`border rounded-xl p-5 shadow-sm transition mb-2 ${selectedId === c.id ? "bg-blue-50 border-blue-200" : "bg-white border-slate-200 dark:bg-slate-700"}`}
+                    className={`border rounded-xl p-5 shadow-sm transition mb-2 ${selectedId === c.id ? "bg-blue-50 border-blue-200 dark:bg-slate-800 dark:border-blue-400/40" : "bg-white border-slate-200 dark:bg-slate-700 dark:border-slate-600"}`}
                   >
                     <div className="flex justify-between items-center mb-3">
                       <div>
                         <strong className="font-semibold text-slate-900 dark:text-slate-100 block mb-1">
                           {c.config?.name || c.id}
                         </strong>
-                        <span className="text-xs text-slate-500 dark:text-slate-300 block">Type: <em>{c.type}</em></span>
+                        <span className="text-xs text-slate-500 dark:text-slate-300 block">Type: <em>{(() => {
+                          const isSqlSubtype = ["mysql","sqlite","postgres","postgresql","mariadb"].includes((c.type||"").toLowerCase());
+                          if (c.type === "sql" || c.dbType || isSqlSubtype) {
+                            const subtype = (c.dbType || (isSqlSubtype ? c.type : "")).toString();
+                            return `sql${subtype ? ` (${subtype})` : ""}`;
+                          }
+                          return c.type;
+                        })()}</em></span>
                       </div>
                       {c.count && (
                         <span className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full text-slate-600 dark:text-slate-300">
@@ -454,7 +498,8 @@ export default function DynamicData() {
                         onClick={() => {
                           setSelectedId(c.id);
                           fetchDataFor(c.id);
-                          setFormType(c.type);
+                          const isSqlSubtype = ["mysql","sqlite","postgres","postgresql","mariadb"].includes((c.type||"").toLowerCase());
+                          setFormType((c.type === "sql" || c.dbType || isSqlSubtype) ? "sql" : c.type);
                         }}
                         className="flex-1 rounded-xl bg-blue-500 px-3 py-2 text-xs font-medium text-white hover:bg-blue-600"
                       > View Data </button>
@@ -478,13 +523,41 @@ export default function DynamicData() {
                 📊 Data {selectedId ? `for ${selectedId}` : ""}
               </h3>
               {selectedId && (
-                <button
-                  onClick={() => fetchDataFor(selectedId, true)}
-                  className="rounded-xl bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-300"
-                > Refresh Data </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => fetchDataFor(selectedId, true)}
+                    className="rounded-xl bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-300"
+                  > Refresh Data </button>
+                  <button
+                    onClick={saveDataToFile}
+                    className="rounded-xl bg-green-600 text-white px-4 py-2 text-sm font-semibold hover:bg-green-700"
+                  > Save Data </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        setRawLoading(true);
+                        setRawJson(null);
+                        const res = await fetch(`${BACKEND}/api/data/${selectedId}`);
+                        const j = await res.json();
+                        setRawJson(j);
+                        setRawOpen(true);
+                      } catch (e) {
+                        alert(`Failed to fetch raw data: ${e.message}`);
+                      } finally {
+                        setRawLoading(false);
+                      }
+                    }}
+                    className="rounded-xl bg-slate-800 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-900"
+                  > {rawLoading ? "Loading..." : "View Raw Data"} </button>
+                </div>
               )}
             </div>
-            {formType === "sql" && selectedId && (
+            {(() => {
+              const selectedConn = connections.find(c => c.id === selectedId);
+              const isSqlSubtype = selectedConn ? ["mysql","sqlite","postgres","postgresql","mariadb"].includes((selectedConn.type||"").toLowerCase()) : false;
+              const isSqlSelected = !!(selectedConn && (selectedConn.type === "sql" || selectedConn.dbType || isSqlSubtype || formType === "sql"));
+              return isSqlSelected && selectedId;
+            })() && (
               <SqlTableSelector
                 selectedId={selectedId}
                 onTablesSelected={() => fetchDataFor(selectedId, true)}
@@ -493,8 +566,8 @@ export default function DynamicData() {
             <div className="flex-1 min-h-0 overflow-auto max-h-[500px]">
               {cached.length > 0 ? (
                 cached.map((tableData, i) => (
-                  <div key={i} className="mb-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
+                  <div key={i} className="mb-5 bg-slate-100 dark:bg-slate-800/70 rounded-xl shadow-sm overflow-hidden border border-slate-200 dark:border-slate-700">
+                    <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/60 flex justify-between items-center">
                       <h5 className="m-0 text-base font-semibold text-slate-900 dark:text-slate-100">
                         <span className="mr-2">📊</span>{tableData.table}
                       </h5>
@@ -514,7 +587,7 @@ export default function DynamicData() {
                           </thead>
                           <tbody>
                             {tableData.rows.map((row, j) => (
-                              <tr key={j} className={`border-b border-slate-200 dark:border-slate-700 ${j % 2 === 0 ? "bg-white dark:bg-slate-800" : "bg-slate-50 dark:bg-slate-800/50"}`}>
+                              <tr key={j} className={`border-b border-slate-200 dark:border-slate-700 ${j % 2 === 0 ? "bg-slate-100 dark:bg-slate-800/60" : "bg-slate-50 dark:bg-slate-800/40"}`}>
                                 {Object.entries(row).map(([key, value]) => (
                                   <td key={key} className="p-3 text-slate-700 dark:text-slate-300 max-w-xs overflow-hidden text-ellipsis whitespace-nowrap">
                                     {value !== null && value !== undefined ? (typeof value === "object" ? JSON.stringify(value) : String(value)) : <span className="text-slate-400 dark:text-slate-500 italic">null</span>}
@@ -546,6 +619,25 @@ export default function DynamicData() {
           </section>
         </div>
       </div>
+      {/* Raw Data Modal */}
+      {rawOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-slate-800 w-[90vw] max-w-4xl max-h-[80vh] rounded-2xl shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+              <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Raw Data Preview</h4>
+              <button
+                onClick={() => setRawOpen(false)}
+                className="rounded-lg bg-slate-200 dark:bg-slate-700 px-3 py-1 text-xs font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-600"
+              > Close </button>
+            </div>
+            <div className="p-4 overflow-auto max-h-[70vh] text-xs">
+              <pre className="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">
+{JSON.stringify(rawJson, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
