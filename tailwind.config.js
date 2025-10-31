@@ -22,5 +22,3 @@ export default {
   },
   plugins: []
 };
-const [showTail, setShowTail] = useState(true);  // default is tail
-

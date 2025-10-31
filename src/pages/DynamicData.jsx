@@ -125,7 +125,7 @@ export default function DynamicData() {
   const wsRef = useRef(null);
   const lastUpdateRef = useRef(Date.now());
   const BACKEND = "http://localhost:8085";
-  const WS_URL = `ws://localhost:8085`;
+  const WS_URL = window.location.protocol === 'https:' ? 'wss://localhost:8085' : 'ws://localhost:8085';
 
   async function fetchConnections() {
     try {
