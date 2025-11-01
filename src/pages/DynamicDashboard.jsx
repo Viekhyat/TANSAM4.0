@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import GlassCard from "../ui/GlassCard.jsx";
-import DynamicChart2D from "../ui/DynamicChart2D.jsx";
-import DynamicChart3D from "../ui/DynamicChart3D.jsx";
+import ChartWithRealTimeData from "../ui/ChartWithRealTimeData.jsx";
 import {
   classifyDynamicCharts,
   normalizeDynamicCharts,
@@ -199,34 +198,27 @@ export default function DynamicDashboard() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
+              <div className="glass-hover rounded-full border border-emerald-400/40 bg-emerald-100/80 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 transition dark:border-emerald-300/20 dark:bg-emerald-500/20 dark:text-emerald-200">
+                Live
+              </div>
+              <button 
                 onClick={handleRefresh}
-                className="glass-hover rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-slate-200/20 dark:text-slate-200 dark:hover:bg-white/5 dark:focus-visible:ring-offset-slate-900"
+                className="glass-hover rounded-full border border-white/20 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-slate-200/20 dark:text-slate-300 dark:hover:bg-white/5 dark:focus-visible:ring-offset-slate-900"
               >
                 Refresh
               </button>
-              <button
-                onClick={handleAddChart}
-                className="glass-hover rounded-full border border-white/20 bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-transparent dark:focus-visible:ring-offset-slate-900"
-              >
-                Add Chart
-              </button>
             </div>
           </div>
+          <div className="mt-2 grid gap-2 md:grid-cols-3">
+            {metrics.map((metric) => (
+              <GlassCard key={metric.label} className="p-3 md:p-4 shadow-none">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{metric.label}</p>
+                <div className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">{formatNumber(metric.value)}</div>
+                <span className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${metric.color}`}>{metric.trend}</span>
+              </GlassCard>
+            ))}
+          </div>
         </GlassCard>
-      </section>
-
-      {/* Metrics Section */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {metrics.map((metric, i) => (
-          <GlassCard key={metric.label || i} className="p-4 shadow-lg md:p-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">{metric.label}</h3>
-              <div className={`rounded-full ${metric.color} px-2 py-0.5 text-[11px] font-semibold`}>{metric.trend}</div>
-            </div>
-            <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-100">{formatNumber(metric.value)}</p>
-          </GlassCard>
-        ))}
       </section>
 
       {/* Status Messaging */}
@@ -243,8 +235,21 @@ export default function DynamicDashboard() {
         </div>
       )}
 
-      {/* Charts Section */}
-      <section className="space-y-6">
+      {/* Charts Section - Referenced from static dashboard */}
+      <section aria-labelledby="saved-charts" className="mt-4 space-y-4 md:mt-6">
+        <h2 id="saved-charts" className="sr-only">
+          Saved charts
+        </h2>
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">Saved charts</p>
+            <p className="text-sm text-slate-500 dark:text-slate-300">Manage layouts, duplicate configurations, or jump back into edit mode.</p>
+          </div>
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500 transition-colors dark:bg-slate-800/60 dark:text-slate-300">
+            {normalizedCharts.length} charts
+          </div>
+        </header>
+
         {isLoading ? (
           <div className="flex h-64 items-center justify-center rounded-2xl border border-dashed border-white/30 dark:border-slate-200/20">
             <div className="text-center">
@@ -253,63 +258,96 @@ export default function DynamicDashboard() {
             </div>
           </div>
         ) : !hasCharts ? (
-          <GlassCard className="flex h-64 flex-col items-center justify-center text-center shadow-lg">
-            <p className="mb-4 text-slate-500 dark:text-slate-300">
-              No charts yet. Create your first visualization!
-            </p>
-            <button
-              onClick={handleAddChart}
-              className="glass-hover rounded-full border border-white/20 bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-transparent dark:focus-visible:ring-offset-slate-900"
+          <GlassCard className="glass-hover flex h-48 flex-col items-center justify-center border border-dashed border-white/40 text-sm text-slate-600 transition-colors dark:border-slate-200/30 dark:text-slate-300">
+            <p className="mb-3">No charts yet. Create your first visualization.</p>
+            <button 
+              onClick={handleAddChart} 
+              className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 flex items-center gap-2"
             >
-              Create Chart
+              <span className="text-lg">+</span> New Chart
             </button>
           </GlassCard>
         ) : (
-          <>
-            {charts2D.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">2D Visualizations</h2>
-                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-slate-500 dark:bg-slate-800/40 dark:text-slate-300">
-                    {charts2D.length} charts
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-                  {charts2D.map((chart) => (
-                    <DynamicChart2D
-                      key={chart.id}
-                      chart={chart}
-                      onEdit={handleEditChart}
-                      onDuplicate={handleDuplicateChart}
-                      onDelete={handleDeleteChart}
-                    />
-                  ))}
-                </div>
+          <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+            {normalizedCharts
+              .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
+              .map((chart) => {
+                const connection = connections.find(c => c.id === chart.dataSource);
+                const connectionName = connection?.config?.name || chart.dataSource || "Unknown connection";
+                
+                return (
+                  <GlassCard key={chart.id} className="flex flex-col gap-3 shadow-xl">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{chart.title}</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-300">
+                          {connectionName} - Updated {chart.updatedAt ? new Date(chart.updatedAt).toLocaleString() : "unknown"}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 text-xs font-semibold">
+                        <button
+                          onClick={() => handleEditChart(chart.id)}
+                          className="glass-hover rounded-full border border-white/20 px-3 py-1 text-slate-600 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-slate-200/20 dark:text-slate-300 dark:hover:bg-white/5 dark:focus-visible:ring-offset-slate-900"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDuplicateChart(chart.id)}
+                          className="glass-hover rounded-full border border-white/20 px-3 py-1 text-slate-600 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-slate-200/20 dark:text-slate-300 dark:hover:bg-white/5 dark:focus-visible:ring-offset-slate-900"
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          onClick={() => handleDeleteChart(chart.id)}
+                          className="glass-hover rounded-full border border-transparent px-3 py-1 text-red-500 transition hover:border-red-100 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:hover:bg-red-500/20 dark:focus-visible:ring-offset-slate-900"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex-1 rounded-2xl bg-slate-50 p-4 transition-colors dark:bg-slate-800/50">
+                      <ChartWithRealTimeData
+                        chart={chart}
+                        onEdit={handleEditChart}
+                        onDuplicate={handleDuplicateChart}
+                        onDelete={handleDeleteChart}
+                      />
+                    </div>
+                    <div className="grid gap-3 text-xs text-slate-500 sm:grid-cols-3 dark:text-slate-300">
+                      <div className="rounded-xl bg-slate-100 px-3 py-2 transition-colors dark:bg-slate-800/60">
+                        <span className="block font-semibold text-slate-700 dark:text-slate-200">Type</span>
+                        <span className="uppercase">{chart.type || chart.chartType || "line"}</span>
+                      </div>
+                      <div className="rounded-xl bg-slate-100 px-3 py-2 transition-colors dark:bg-slate-800/60">
+                        <span className="block font-semibold text-slate-700 dark:text-slate-200">Dimension</span>
+                        <span className="uppercase">{chart.dimension || "2d"}</span>
+                      </div>
+                      <div className="rounded-xl bg-slate-100 px-3 py-2 transition-colors dark:bg-slate-800/60">
+                        <span className="block font-semibold text-slate-700 dark:text-slate-200">Source</span>
+                        <span className="truncate">{connectionName}</span>
+                      </div>
+                    </div>
+                  </GlassCard>
+                );
+              })}
+            <GlassCard className="flex h-[300px] flex-col items-center justify-center gap-3 border-2 border-dashed border-white/40 text-center shadow-xl dark:border-slate-200/30">
+              <div className="rounded-full bg-brand-100 p-4 dark:bg-brand-500/20">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-brand-500">
+                  <path d="M12 5v14M5 12h14"></path>
+                </svg>
               </div>
-            )}
-
-            {charts3D.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">3D Visualizations</h2>
-                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-slate-500 dark:bg-slate-800/40 dark:text-slate-300">
-                    {charts3D.length} charts
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-                  {charts3D.map((chart) => (
-                    <DynamicChart3D
-                      key={chart.id}
-                      chart={chart}
-                      onEdit={handleEditChart}
-                      onDuplicate={handleDuplicateChart}
-                      onDelete={handleDeleteChart}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Create New Chart</h3>
+              <p className="text-xs text-center text-slate-500 dark:text-slate-300">
+                Add a new visualization to your dashboard
+              </p>
+              <button
+                onClick={handleAddChart}
+                className="mt-2 rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
+              >
+                New Chart
+              </button>
+            </GlassCard>
+          </div>
         )}
       </section>
     </div>

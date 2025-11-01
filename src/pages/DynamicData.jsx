@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useStore } from "../providers/StoreContext.jsx";
+import { inferTypes, coerceRows } from "../utils/parseData.js";
 
 // --- SQL Table Selector Component ---
 function SqlTableSelector({ selectedId, onTablesSelected }) {
@@ -117,6 +119,7 @@ function SqlTableSelector({ selectedId, onTablesSelected }) {
 
 // --- Main Dashboard Split Layout ---
 export default function DynamicData() {
+  const { saveDataset, generateId } = useStore();
   const [connections, setConnections] = useState([]);
   const [formType, setFormType] = useState("mqtt");
   const [form, setForm] = useState({ name: "", config: {} });
@@ -130,20 +133,110 @@ export default function DynamicData() {
   const BACKEND = "http://localhost:8085";
   const WS_URL = window.location.protocol === 'https:' ? 'wss://localhost:8085' : 'ws://localhost:8085';
 
-  const saveDataToFile = () => {
+  const nowIso = () => new Date().toISOString();
+
+  const saveTableData = (tableData, format = 'json') => {
     try {
-      const blob = new Blob([JSON.stringify({ id: selectedId, data: cached }, null, 2)], { type: "application/json" });
+      let blob, filename;
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const tableName = tableData.table || 'table';
+      
+      if (format === 'csv') {
+        // Convert to CSV
+        if (tableData.rows.length === 0) {
+          alert('No data to save');
+          return;
+        }
+        const headers = Object.keys(tableData.rows[0]);
+        const csvRows = [
+          headers.join(','),
+          ...tableData.rows.map(row => 
+            headers.map(header => {
+              const value = row[header];
+              if (value === null || value === undefined) return '';
+              // Escape commas and quotes in CSV
+              const stringValue = String(value).replace(/"/g, '""');
+              return `"${stringValue}"`;
+            }).join(',')
+          )
+        ];
+        const csvContent = csvRows.join('\n');
+        blob = new Blob([csvContent], { type: 'text/csv' });
+        filename = `${tableName}-${ts}.csv`;
+      } else {
+        // Save as JSON
+        blob = new Blob([JSON.stringify(tableData, null, 2)], { type: 'application/json' });
+        filename = `${tableName}-${ts}.json`;
+      }
+      
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      const ts = new Date().toISOString().replace(/[:.]/g, '-');
       a.href = url;
-      a.download = `data-${selectedId || 'unknown'}-${ts}.json`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      alert(`Failed to save data: ${e.message}`);
+      alert(`Failed to save table data: ${e.message}`);
+    }
+  };
+
+  const saveSelectedTables = async () => {
+    try {
+      if (!selectedId) {
+        alert('No connection selected');
+        return;
+      }
+      const selectedConn = connections.find(c => c.id === selectedId);
+      const isSqlSubtype = selectedConn ? ["mysql","sqlite","postgres","postgresql","mariadb"].includes((selectedConn.type||"").toLowerCase()) : false;
+      const isSqlSelected = !!(selectedConn && (selectedConn.type === "sql" || selectedConn.dbType || isSqlSubtype));
+      
+      if (!isSqlSelected) {
+        alert('Selected tables can only be saved for SQL connections');
+        return;
+      }
+      
+      // First try to get selected tables from connection object
+      let selectedTables = Array.isArray(selectedConn.selectedTables) && selectedConn.selectedTables.length > 0
+        ? selectedConn.selectedTables
+        : null;
+      
+      // If no selected tables, get from currently displayed tables (cached data)
+      if (!selectedTables && cached.length > 0) {
+        selectedTables = cached.map(t => t.table);
+      }
+      
+      // If still no tables, fetch all available tables
+      if (!selectedTables || selectedTables.length === 0) {
+        const res = await fetch(`${BACKEND}/api/sql/tables/${selectedId}`);
+        const data = await res.json();
+        if (!data.success) {
+          alert('Failed to fetch tables: ' + (data.error || 'Unknown error'));
+          return;
+        }
+        selectedTables = data.tables || [];
+      }
+      
+      const tablesData = {
+        connectionId: selectedId,
+        connectionName: selectedConn.config?.name || selectedId,
+        tables: selectedTables,
+        savedAt: new Date().toISOString()
+      };
+      
+      const blob = new Blob([JSON.stringify(tablesData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `selected-tables-${selectedId}-${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(`Failed to save selected tables: ${e.message}`);
     }
   };
 
@@ -159,27 +252,38 @@ export default function DynamicData() {
 
   const fetchDataFor = async (id, manual = false) => {
     if (!id) return;
+    console.log(`🔄 Fetching data for connection: ${id}`);
     try {
       const res = await fetch(`${BACKEND}/api/data/${id}`);
       const j = await res.json();
+      console.log(`📥 Data fetch response for ${id}:`, j);
       if (j.success && Array.isArray(j.data)) {
+        console.log(`✅ Received ${j.data.length} tables with data`);
+        j.data.forEach((table, idx) => {
+          console.log(`  Table ${idx}: "${table.table}" with ${table.rows?.length || 0} rows`);
+        });
         setCached(j.data);
         lastUpdateRef.current = Date.now();
-      } else if (manual) {
-        alert("No data available for this connection.");
+      } else {
+        console.warn(`⚠️ No data or invalid response for ${id}:`, j);
+        if (manual) {
+          alert(`No data available for this connection. ${j.error ? `Error: ${j.error}` : 'Make sure data is being published to the MQTT topic.'}`);
+        }
       }
     } catch (e) {
-      console.error("❌ fetchDataFor:", e);
+      console.error("❌ fetchDataFor error:", e);
+      if (manual) {
+        alert(`Failed to fetch data: ${e.message}`);
+      }
     }
   };
 
   useEffect(() => {
     if (!selectedId) return;
+    // Poll every 2 seconds for real-time updates - always fetch to get flowing data
     const interval = setInterval(() => {
-      if (Date.now() - lastUpdateRef.current > 10000) {
-        fetchDataFor(selectedId);
-      }
-    }, 5000);
+      fetchDataFor(selectedId);
+    }, 2000); // Poll every 2 seconds for real-time EDA
     return () => clearInterval(interval);
   }, [selectedId]);
 
@@ -220,16 +324,52 @@ export default function DynamicData() {
 
   const handleAdd = async () => {
     if (!form.name.trim()) return alert("Please provide a connection name");
-    // Compose broker URL if port provided for MQTT
-    if (formType === "mqtt" && form.config.port) {
-      if (!form.config.brokerUrl?.match(/:\d+$/)) {
-        form.config.brokerUrl = (form.config.brokerUrl || "wss://localhost") + ":" + form.config.port;
+    
+    // Compose broker URL for MQTT
+    if (formType === "mqtt") {
+      let brokerUrl = (form.config.brokerUrl || "").trim();
+      
+      // If brokerUrl doesn't include protocol, add mqtt:// by default
+      if (brokerUrl && !brokerUrl.match(/^(mqtt|ws|wss|tcp):\/\//)) {
+        // Default to mqtt:// protocol
+        brokerUrl = "mqtt://" + brokerUrl.replace(/^\/\//, "");
+      }
+      
+      // Default to localhost if nothing provided
+      if (!brokerUrl || brokerUrl === "mqtt://") {
+        brokerUrl = "mqtt://localhost:1883";
+      }
+      
+      // Ensure URL has a port if missing
+      if (brokerUrl && brokerUrl.startsWith("mqtt://")) {
+        // Check if URL has a port (pattern: mqtt://host:port or mqtt://host/path)
+        const urlMatch = brokerUrl.match(/^mqtt:\/\/([^\/:]+)(?::(\d+))?(?:\/.*)?$/);
+        if (urlMatch) {
+          const host = urlMatch[1];
+          const port = urlMatch[2];
+          
+          // If no port specified, add default port 1883
+          if (!port) {
+            brokerUrl = `mqtt://${host}:1883`;
+          }
+        }
+      }
+      
+      form.config.brokerUrl = brokerUrl;
+      console.log("🔌 Final MQTT broker URL:", brokerUrl);
+      console.log("🔌 Topic:", form.config.topic);
+      
+      if (!form.config.topic) {
+        alert("⚠️ Please specify an MQTT topic to subscribe to");
+        return;
       }
     }
-  // Ensure SQL type default is set if user didn't change the dropdown
-  if (formType === "sql" && !form.config.type) {
-    form.config.type = "mysql";
-  }
+    
+    // Ensure SQL type default is set if user didn't change the dropdown
+    if (formType === "sql" && !form.config.type) {
+      form.config.type = "mysql";
+    }
+    
     const payload = { type: formType, config: { ...form.config, name: form.name } };
     // DEBUG: Show values sent
     console.log("Add Connection payload:", payload);
@@ -353,31 +493,34 @@ export default function DynamicData() {
         return (
           <>
             <div className="mb-3">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Broker URL</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
+                Broker URL
+              </label>
               <input
-                placeholder="Broker URL (ws://...)"
+                placeholder="mqtt://test.mosquitto.org:1883"
                 value={form.config.brokerUrl || ""}
                 onChange={(e) => setConfigField("brokerUrl", e.target.value)}
                 className={inputStyle}
               />
-            </div>
-            <div className="mb-3">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Port</label>
-              <input
-                placeholder="Port (e.g. 8081)"
-                value={form.config.port || ""}
-                onChange={(e) => setConfigField("port", e.target.value)}
-                className={inputStyle}
-              />
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Format: <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">mqtt://broker-host:port</code>
+                <br />
+                Example: <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">mqtt://test.mosquitto.org:1883</code>
+              </p>
             </div>
             <div className="mb-3">
               <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Topic</label>
               <input
-                placeholder="Topic"
+                placeholder="Viekhyat/machine/sensors"
                 value={form.config.topic || ""}
                 onChange={(e) => setConfigField("topic", e.target.value)}
                 className={inputStyle}
               />
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                The MQTT topic to subscribe to (must match exactly, case-sensitive)
+                <br />
+                Example: <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">Viekhyat/machine/sensors</code>
+              </p>
             </div>
           </>
         );
@@ -529,10 +672,6 @@ export default function DynamicData() {
                     className="rounded-xl bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-300"
                   > Refresh Data </button>
                   <button
-                    onClick={saveDataToFile}
-                    className="rounded-xl bg-green-600 text-white px-4 py-2 text-sm font-semibold hover:bg-green-700"
-                  > Save Data </button>
-                  <button
                     onClick={async () => {
                       try {
                         setRawLoading(true);
@@ -558,10 +697,19 @@ export default function DynamicData() {
               const isSqlSelected = !!(selectedConn && (selectedConn.type === "sql" || selectedConn.dbType || isSqlSubtype || formType === "sql"));
               return isSqlSelected && selectedId;
             })() && (
-              <SqlTableSelector
-                selectedId={selectedId}
-                onTablesSelected={() => fetchDataFor(selectedId, true)}
-              />
+              <div>
+                <SqlTableSelector
+                  selectedId={selectedId}
+                  onTablesSelected={() => fetchDataFor(selectedId, true)}
+                />
+                <button
+                  onClick={saveSelectedTables}
+                  className="rounded-xl bg-purple-500 text-white px-4 py-2 text-sm font-semibold hover:bg-purple-600 transition mb-3"
+                  title="Save selected tables list"
+                >
+                  💾 Save Selected Tables List
+                </button>
+              </div>
             )}
             <div className="flex-1 min-h-0 overflow-auto max-h-[500px]">
               {cached.length > 0 ? (
@@ -571,9 +719,27 @@ export default function DynamicData() {
                       <h5 className="m-0 text-base font-semibold text-slate-900 dark:text-slate-100">
                         <span className="mr-2">📊</span>{tableData.table}
                       </h5>
-                      <span className="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-full text-slate-600 dark:text-slate-300">
-                        {tableData.rows.length} rows
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-full text-slate-600 dark:text-slate-300">
+                          {tableData.rows.length} rows
+                        </span>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => saveTableData(tableData, 'json')}
+                            className="rounded-lg bg-green-500 text-white px-2 py-1 text-xs font-medium hover:bg-green-600 transition"
+                            title="Save as JSON"
+                          >
+                            💾 JSON
+                          </button>
+                          <button
+                            onClick={() => saveTableData(tableData, 'csv')}
+                            className="rounded-lg bg-blue-500 text-white px-2 py-1 text-xs font-medium hover:bg-blue-600 transition"
+                            title="Save as CSV"
+                          >
+                            📄 CSV
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     <div className="p-4 overflow-x-auto">
                       {tableData.rows.length > 0 ? (

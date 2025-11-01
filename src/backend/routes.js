@@ -1,5 +1,6 @@
 import express from "express";
 import connectionManager from "./connectionManager.js";
+import chartsStorage from "./chartsStorage.js";
 const router = express.Router();
 
 router.post("/add-connection", async (req, res) => {
@@ -98,13 +99,59 @@ router.get("/data/:id", async (req, res) => {
         }
       }
     } else if (conn.type === "mqtt") {
-      // For MQTT, use the first topic in cache or return empty
+      console.log(`📊 Fetching MQTT data for connection: ${req.params.id}`);
+      console.log(`  - Has dataCache: ${!!conn.dataCache}`);
+      console.log(`  - Config topic: ${conn.config?.topic || 'none'}`);
+      
+      // For MQTT, get data from all topics in cache
       if (conn.dataCache) {
         const topics = Object.keys(conn.dataCache);
+        console.log(`  - Cached topics: ${topics.length}`, topics);
+        
         if (topics.length > 0) {
-          data = [{ table: topics[0], rows: conn.dataCache[topics[0]] }];
+          // Return data from all topics, flattened for EDA
+          data = topics.map(topic => {
+            const rows = conn.dataCache[topic] || [];
+            console.log(`  - Topic "${topic}": ${rows.length} rows`);
+            return {
+              table: topic,
+              rows: rows
+            };
+          });
+        } else {
+          console.log(`  - No cached topics, attempting subscription`);
+          // If no cache yet, try to subscribe to the configured topic
+          if (conn.config && conn.config.topic) {
+            // Trigger subscription by calling previewMqttData
+            await connectionManager.previewMqttData(req.params.id, conn.config.topic, 1000);
+            // Wait a moment for messages, then return cached data
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const topic = conn.config.topic;
+            const updatedConn = connectionManager.getConnection(req.params.id);
+            if (updatedConn && updatedConn.dataCache && updatedConn.dataCache[topic] && updatedConn.dataCache[topic].length > 0) {
+              console.log(`  - Found ${updatedConn.dataCache[topic].length} rows after subscription`);
+              data = [{ table: topic, rows: updatedConn.dataCache[topic] }];
+            } else {
+              console.log(`  - Still no data after subscription attempt`);
+            }
+          }
+        }
+      } else if (conn.config && conn.config.topic) {
+        console.log(`  - Initializing cache and subscribing to: ${conn.config.topic}`);
+        // Initialize cache and subscribe
+        await connectionManager.previewMqttData(req.params.id, conn.config.topic, 1000);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const updatedConn = connectionManager.getConnection(req.params.id);
+        if (updatedConn && updatedConn.dataCache && updatedConn.dataCache[conn.config.topic]) {
+          const rows = updatedConn.dataCache[conn.config.topic];
+          console.log(`  - Found ${rows.length} rows after initialization`);
+          data = [{ table: conn.config.topic, rows: rows }];
+        } else {
+          console.log(`  - Still no data after initialization`);
         }
       }
+      
+      console.log(`  - Returning ${data.length} tables`);
     } else if (conn.type === "http") {
       // For HTTP, use the first endpoint in cache or return empty
       if (conn.dataCache) {
@@ -117,11 +164,86 @@ router.get("/data/:id", async (req, res) => {
       // For Serial, get the latest data
       const serialData = await connectionManager.previewSerialData(req.params.id, 20);
       data = [{ table: "Serial Data", rows: serialData }];
+    } else if (conn.type === "static") {
+      // For Static/Snapshot connections, return the stored snapshot data
+      if (conn.dataCache) {
+        const tables = Object.keys(conn.dataCache);
+        if (tables.length > 0) {
+          data = tables.map(topic => ({
+            table: topic,
+            rows: conn.dataCache[topic] || []
+          }));
+        }
+      } else if (conn.snapshotData && Array.isArray(conn.snapshotData)) {
+        // Fallback to snapshotData if dataCache not initialized
+        data = conn.snapshotData;
+      }
     }
     
     res.json({ success: true, data });
   } catch (err) {
     res.json({ success: false, error: err.message });
+  }
+});
+
+// Chart endpoints for Dynamic Dashboard
+router.get("/charts", (req, res) => {
+  try {
+    const charts = chartsStorage.getAll();
+    res.json({ success: true, charts });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get("/charts/:id", (req, res) => {
+  try {
+    const chartId = req.params.id;
+    console.log(`📊 GET /api/charts/${chartId}`);
+    const chart = chartsStorage.get(chartId);
+    console.log(`Chart found:`, chart ? "yes" : "no");
+    if (!chart) {
+      console.log(`❌ Chart ${chartId} not found. Available charts:`, chartsStorage.getAll().map(c => c.id));
+      return res.status(404).json({ success: false, error: `Chart with ID "${chartId}" not found` });
+    }
+    console.log(`✅ Returning chart:`, chart.title);
+    res.json({ success: true, chart });
+  } catch (err) {
+    console.error(`❌ Error getting chart:`, err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post("/charts", (req, res) => {
+  try {
+    const chart = chartsStorage.create(req.body);
+    res.json({ success: true, chart, id: chart.id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.put("/charts/:id", (req, res) => {
+  try {
+    const chart = chartsStorage.update(req.params.id, req.body);
+    res.json({ success: true, chart });
+  } catch (err) {
+    if (err.message === "Chart not found") {
+      return res.status(404).json({ success: false, error: err.message });
+    }
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete("/charts/:id", (req, res) => {
+  try {
+    const deleted = chartsStorage.delete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: "Chart not found" });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

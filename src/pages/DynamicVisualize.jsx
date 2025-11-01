@@ -54,28 +54,50 @@ export default function DynamicVisualizePage() {
 
   useEffect(() => {
     // If editing, fetch the existing chart configuration
-    if (isEditing) {
+    if (isEditing && id) {
       const fetchChartConfig = async () => {
         try {
+          setLoading(true);
+          setError(null);
+          console.log(`Fetching chart config for ID: ${id}`);
           const response = await fetch(`${BACKEND_URL}/api/charts/${id}`);
+          
+          if (!response.ok) {
+            if (response.status === 404) {
+              setError(`Chart with ID "${id}" not found. It may have been deleted or the server was restarted.`);
+            } else {
+              setError(`Failed to load chart: ${response.status} ${response.statusText}`);
+            }
+            setLoading(false);
+            return;
+          }
+          
           const data = await response.json();
-          if (data.success) {
+          console.log("Chart config response:", data);
+          
+          if (data.success && data.chart) {
             setChartTitle(data.chart.title);
-            setChartType(data.chart.type);
+            setChartType(data.chart.type || data.chart.chartType || "line");
             setDataSource(data.chart.dataSource);
             setSelectedFields({
-              xField: data.chart.xField,
-              yField: data.chart.yField
+              xField: data.chart.xField || "",
+              yField: data.chart.yField || ""
             });
             setChartDimension(data.chart.dimension || data.chart.options?.dimension || "2d");
+          } else {
+            setError(data.error || "Failed to load chart configuration.");
           }
+          setLoading(false);
         } catch (err) {
           console.error("Error fetching chart config:", err);
-          setError("Failed to load chart configuration.");
+          setError(`Failed to load chart configuration: ${err.message}`);
+          setLoading(false);
         }
       };
       
       fetchChartConfig();
+    } else if (!isEditing) {
+      setLoading(false);
     }
   }, [id, isEditing]);
 
@@ -122,7 +144,11 @@ export default function DynamicVisualizePage() {
       }
     };
     
+    // Fetch immediately and then poll every 2 seconds for real-time updates
     fetchData();
+    const interval = setInterval(fetchData, 2000); // Poll every 2 seconds for real-time EDA
+    
+    return () => clearInterval(interval);
   }, [dataSource]);
 
   useEffect(() => {
@@ -191,10 +217,17 @@ export default function DynamicVisualizePage() {
                 Connect your live data and build a chart in minutes.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2">
               <div className="glass-hover rounded-full border border-emerald-400/40 bg-emerald-100/80 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 transition dark:border-emerald-300/20 dark:bg-emerald-500/20 dark:text-emerald-200">
                 Live Preview
               </div>
+              <button
+                type="button"
+                onClick={() => navigate("/dynamic-dashboard")}
+                className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                View dashboard
+              </button>
             </div>
           </div>
         </GlassCard>
@@ -202,7 +235,18 @@ export default function DynamicVisualizePage() {
 
       {error && (
         <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-lg" role="alert">
-          <p>{error}</p>
+          <p className="font-semibold mb-2">{error}</p>
+          {isEditing && (
+            <button
+              onClick={() => {
+                navigate("/dynamic-visualize");
+                setError(null);
+              }}
+              className="text-sm underline hover:no-underline"
+            >
+              Create a new chart instead
+            </button>
+          )}
         </div>
       )}
 
@@ -313,7 +357,7 @@ export default function DynamicVisualizePage() {
                 <option value="">Select a data source</option>
                 {connections.map((connection) => (
                   <option key={connection.id} value={connection.id}>
-                    {connection.name}
+                    {connection.config?.name || connection.id}
                   </option>
                 ))}
               </select>

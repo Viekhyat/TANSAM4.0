@@ -256,7 +256,7 @@ export default function App() {
           }
         />
         <Route
-          path="/dynamic-visualize"
+          path="/dynamic-visualize/:id?"
           element={
             <PrivateRoute>
               <DynamicVisualizePage />
