@@ -511,7 +511,7 @@ export default function DynamicData() {
             <div className="mb-3">
               <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Topic</label>
               <input
-                placeholder="Viekhyat/machine/sensors"
+                placeholder=""
                 value={form.config.topic || ""}
                 onChange={(e) => setConfigField("topic", e.target.value)}
                 className={inputStyle}
@@ -519,7 +519,7 @@ export default function DynamicData() {
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                 The MQTT topic to subscribe to (must match exactly, case-sensitive)
                 <br />
-                Example: <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">Viekhyat/machine/sensors</code>
+                Example: <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">Name/machine/sensors</code>
               </p>
             </div>
           </>
