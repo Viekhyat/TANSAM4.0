@@ -175,7 +175,37 @@ class ConnectionManager {
       }
     }
     else if (type === "serial") entry = createSerialConnection(config);
-    else if (type === "http") entry = { client: createHttpConnection(config) };
+    else if (type === "http") {
+      entry = { client: createHttpConnection(config) };
+      // Initialize HTTP-specific properties
+      entry.dataCache = {};
+      entry.pollInterval = null;
+      
+      // Store connection FIRST before setting up polling
+      this.connections[id] = { id, type, dbType: undefined, config, ...entry };
+      const conn = this.connections[id];
+      
+      // Set up automatic polling if endpoint and poll interval are configured
+      if (config.endpoint && config.pollIntervalMs) {
+        const pollIntervalMs = Number(config.pollIntervalMs) || 5000; // Default 5 seconds
+        const endpoint = config.endpoint;
+        
+        // Initial fetch
+        this.pollHttpEndpoint(id, endpoint);
+        
+        // Set up interval for continuous polling
+        conn.pollInterval = setInterval(() => {
+          this.pollHttpEndpoint(id, endpoint);
+        }, pollIntervalMs);
+        
+        console.log(`🔄 HTTP polling started for ${id} at endpoint ${endpoint}, interval: ${pollIntervalMs}ms`);
+      } else if (config.endpoint) {
+        // If endpoint is provided but no interval, do initial fetch
+        this.pollHttpEndpoint(id, config.endpoint);
+      }
+      
+      return conn;
+    }
     else throw new Error("Unsupported type");
     // Preserve protocol type (e.g., 'sql') and store DB subtype separately to avoid UI confusion
     let dbType;
@@ -190,6 +220,11 @@ class ConnectionManager {
   }
 
   removeConnection(id) {
+    const conn = this.connections[id];
+    if (conn && conn.pollInterval) {
+      clearInterval(conn.pollInterval);
+      console.log(`🛑 Stopped HTTP polling for ${id}`);
+    }
     delete this.connections[id];
   }
 
@@ -241,33 +276,110 @@ class ConnectionManager {
     return c.dataCache[topic] || [];
   }
   
+  async pollHttpEndpoint(id, endpoint) {
+    const c = this.connections[id];
+    if (!c || c.type !== "http") {
+      console.error(`❌ HTTP connection ${id} not found or not HTTP type`);
+      return;
+    }
+    
+    try {
+      // Build endpoint URL with device ID support
+      let endpointPath = endpoint || c.config?.endpoint || '';
+      
+      // If device ID is provided, append as query parameter or include in path
+      if (c.config?.deviceId) {
+        const deviceId = c.config.deviceId;
+        // Check if endpoint already has query params
+        if (endpointPath.includes('?')) {
+          endpointPath += `&device_id=${encodeURIComponent(deviceId)}`;
+        } else {
+          endpointPath += `?device_id=${encodeURIComponent(deviceId)}`;
+        }
+      }
+      
+      console.log(`📡 HTTP polling: ${id} -> ${endpointPath}`);
+      const response = await c.client.get(endpointPath);
+      const responseData = response.data;
+      
+      // Use base endpoint (without query params) as cache key
+      const cacheKey = endpoint || c.config?.endpoint || endpointPath.split('?')[0];
+      
+      // Initialize cache if needed
+      if (!c.dataCache) c.dataCache = {};
+      if (!c.dataCache[cacheKey]) c.dataCache[cacheKey] = [];
+      
+      // Flatten data similar to MQTT: handle both object and array responses
+      let flatData;
+      if (Array.isArray(responseData)) {
+        // If response is an array, add each item with timestamp
+        responseData.forEach(item => {
+          flatData = {
+            timestamp: new Date().toISOString(),
+            endpoint: cacheKey,
+            deviceId: c.config?.deviceId || null,
+            ...(typeof item === 'object' ? item : { value: item })
+          };
+          c.dataCache[cacheKey].push(flatData);
+        });
+      } else if (typeof responseData === 'object' && responseData !== null) {
+        // If response is an object, flatten it with timestamp
+        flatData = {
+          timestamp: new Date().toISOString(),
+          endpoint: cacheKey,
+          deviceId: c.config?.deviceId || null,
+          ...responseData
+        };
+        c.dataCache[cacheKey].push(flatData);
+      } else {
+        // Primitive value, wrap it
+        flatData = {
+          timestamp: new Date().toISOString(),
+          endpoint: cacheKey,
+          deviceId: c.config?.deviceId || null,
+          value: responseData
+        };
+        c.dataCache[cacheKey].push(flatData);
+      }
+      
+      // Keep last 10,000 entries per endpoint (similar to MQTT limit for real-time EDA)
+      const EDA_LIMIT = 10000;
+      if (c.dataCache[cacheKey].length > EDA_LIMIT) {
+        c.dataCache[cacheKey] = c.dataCache[cacheKey].slice(-EDA_LIMIT);
+      }
+      
+      // Emit WebSocket update if available
+      if (this.wss && flatData) {
+        this.broadcastUpdate(id, cacheKey, flatData);
+      }
+      
+      console.log(`✅ HTTP data cached for ${cacheKey}, cache size: ${c.dataCache[cacheKey].length}`);
+    } catch (err) {
+      console.error(`❌ HTTP polling error for ${id} (${endpoint}):`, err.message);
+      // Don't throw, just log - polling should continue even if one request fails
+    }
+  }
+  
   async previewHttpData(id, endpoint, limit = 5) {
     const c = this.connections[id];
     if (!c || c.type !== "http") throw new Error("Not HTTP");
     
-    try {
-      const response = await c.client.get(endpoint);
-      const data = response.data;
-      
-      // Store the data in cache
-      if (!c.dataCache) c.dataCache = {};
-      if (!c.dataCache[endpoint]) c.dataCache[endpoint] = [];
-      
-      c.dataCache[endpoint].push({
-        timestamp: new Date().toISOString(),
-        data
-      });
-      
-      // Keep only the latest 'limit' responses
-      if (c.dataCache[endpoint].length > limit) {
-        c.dataCache[endpoint] = c.dataCache[endpoint].slice(-limit);
-      }
-      
-      return c.dataCache[endpoint];
-    } catch (err) {
-      console.error(`HTTP request error: ${err.message}`);
-      throw new Error(`HTTP request failed: ${err.message}`);
+    // If endpoint is provided, fetch it now (this also initializes polling if configured)
+    if (endpoint) {
+      await this.pollHttpEndpoint(id, endpoint);
     }
+    
+    // Return cached data
+    if (!c.dataCache) c.dataCache = {};
+    if (endpoint && c.dataCache[endpoint]) {
+      // Return the requested endpoint's data
+      const data = c.dataCache[endpoint];
+      // If limit is specified, return only the latest entries
+      return limit ? data.slice(-limit) : data;
+    }
+    
+    // If no specific endpoint requested, return all cached endpoints' data
+    return Object.values(c.dataCache).flat().slice(-limit);
   }
   
   async previewSerialData(id, limit = 20) {

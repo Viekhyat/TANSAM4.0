@@ -528,13 +528,25 @@ export default function DynamicData() {
         return (
           <>
             <input
-              placeholder="URL"
+              placeholder="Base URL (e.g., http://127.0.0.1:8080)"
               value={form.config.url || ""}
               onChange={(e) => setConfigField("url", e.target.value)}
               className={inputStyle}
             />
             <input
-              placeholder="Poll Interval (ms)"
+              placeholder="Endpoint (e.g., /api/iot or api/iot)"
+              value={form.config.endpoint || ""}
+              onChange={(e) => setConfigField("endpoint", e.target.value)}
+              className={inputStyle}
+            />
+            <input
+              placeholder="Device ID (optional, e.g., sensor-001)"
+              value={form.config.deviceId || ""}
+              onChange={(e) => setConfigField("deviceId", e.target.value)}
+              className={inputStyle}
+            />
+            <input
+              placeholder="Poll Interval (ms, e.g., 2000)"
               type="number"
               value={form.config.pollIntervalMs || ""}
               onChange={(e) => setConfigField("pollIntervalMs", e.target.value)}

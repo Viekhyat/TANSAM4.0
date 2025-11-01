@@ -69,6 +69,76 @@ router.get("/http/preview/:id", async (req, res) => {
   } catch (err) { res.json({ success: false, error: err.message }); }
 });
 
+// HTTP POST endpoint to receive sensor data (alternative: /api/sensor-data or /api/data)
+router.post("/sensor-data", async (req, res) => {
+  try {
+    const sensorData = req.body;
+    const { device_id } = sensorData;
+    
+    if (!device_id) {
+      return res.status(400).json({ success: false, error: "device_id is required" });
+    }
+    
+    console.log(`📡 Received:`, sensorData);
+    
+    // Find HTTP connection(s) that match this device_id or have matching endpoint
+    const connections = connectionManager.listConnections().filter(
+      conn => conn.type === "http"
+    );
+    
+    if (connections.length === 0) {
+      console.warn(`⚠️ No HTTP connections found to store sensor data`);
+      // Still respond with success to sensor, but don't store data
+      return res.status(200).json({ success: true, message: "Data received but no HTTP connections configured" });
+    }
+    
+    // Store data in all HTTP connections (or find matching one by device_id/config)
+    let stored = false;
+    for (const conn of connections) {
+      if (!conn.dataCache) {
+        conn.dataCache = {};
+      }
+      
+      // Use endpoint or device_id as cache key
+      const cacheKey = conn.config?.endpoint || `/sensor-data/${device_id}`;
+      if (!conn.dataCache[cacheKey]) {
+        conn.dataCache[cacheKey] = [];
+      }
+      
+      // Flatten data with timestamp
+      const flatData = {
+        timestamp: sensorData.timestamp || new Date().toISOString(),
+        endpoint: cacheKey,
+        device_id: device_id,
+        ...sensorData
+      };
+      
+      conn.dataCache[cacheKey].push(flatData);
+      
+      // Keep last 10,000 entries
+      const EDA_LIMIT = 10000;
+      if (conn.dataCache[cacheKey].length > EDA_LIMIT) {
+        conn.dataCache[cacheKey] = conn.dataCache[cacheKey].slice(-EDA_LIMIT);
+      }
+      
+      // Broadcast WebSocket update
+      connectionManager.broadcastUpdate(conn.id, cacheKey, flatData);
+      
+      stored = true;
+      console.log(`✅ Stored sensor data in connection ${conn.id}, cache size: ${conn.dataCache[cacheKey].length}`);
+    }
+    
+    if (stored) {
+      console.log(`✅ Sent from ${device_id} | Status: 200`);
+    }
+    
+    res.status(200).json({ success: true, message: `Data received from ${device_id}`, stored });
+  } catch (err) {
+    console.error(`❌ Error receiving sensor data:`, err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Serial endpoints
 router.get("/serial/preview/:id", async (req, res) => {
   try {
@@ -153,13 +223,53 @@ router.get("/data/:id", async (req, res) => {
       
       console.log(`  - Returning ${data.length} tables`);
     } else if (conn.type === "http") {
-      // For HTTP, use the first endpoint in cache or return empty
+      console.log(`📊 Fetching HTTP data for connection: ${req.params.id}`);
+      console.log(`  - Has dataCache: ${!!conn.dataCache}`);
+      console.log(`  - Config endpoint: ${conn.config?.endpoint || 'none'}`);
+      
+      // For HTTP, get data from all endpoints in cache
       if (conn.dataCache) {
         const endpoints = Object.keys(conn.dataCache);
+        console.log(`  - Cached endpoints: ${endpoints.length}`, endpoints);
+        
         if (endpoints.length > 0) {
-          data = [{ table: endpoints[0], rows: conn.dataCache[endpoints[0]] }];
+          // Return data from all endpoints, similar to MQTT topics
+          data = endpoints.map(endpoint => {
+            const rows = conn.dataCache[endpoint] || [];
+            console.log(`  - Endpoint "${endpoint}": ${rows.length} rows`);
+            return {
+              table: endpoint,
+              rows: rows
+            };
+          });
+        } else {
+          console.log(`  - No cached endpoints, attempting initial fetch`);
+          // If no cache yet, try to fetch the configured endpoint
+          if (conn.config && conn.config.endpoint) {
+            await connectionManager.pollHttpEndpoint(req.params.id, conn.config.endpoint);
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait a moment
+            const updatedConn = connectionManager.getConnection(req.params.id);
+            if (updatedConn && updatedConn.dataCache && updatedConn.dataCache[conn.config.endpoint]) {
+              const rows = updatedConn.dataCache[conn.config.endpoint];
+              console.log(`  - Found ${rows.length} rows after initial fetch`);
+              data = [{ table: conn.config.endpoint, rows: rows }];
+            }
+          }
+        }
+      } else if (conn.config && conn.config.endpoint) {
+        console.log(`  - Initializing cache and fetching: ${conn.config.endpoint}`);
+        // Initialize cache and fetch
+        await connectionManager.pollHttpEndpoint(req.params.id, conn.config.endpoint);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const updatedConn = connectionManager.getConnection(req.params.id);
+        if (updatedConn && updatedConn.dataCache && updatedConn.dataCache[conn.config.endpoint]) {
+          const rows = updatedConn.dataCache[conn.config.endpoint];
+          console.log(`  - Found ${rows.length} rows after initialization`);
+          data = [{ table: conn.config.endpoint, rows: rows }];
         }
       }
+      
+      console.log(`  - Returning ${data.length} tables`);
     } else if (conn.type === "serial") {
       // For Serial, get the latest data
       const serialData = await connectionManager.previewSerialData(req.params.id, 20);

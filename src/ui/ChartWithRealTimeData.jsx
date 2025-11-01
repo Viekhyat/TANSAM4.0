@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import DynamicChart2D from "./DynamicChart2D.jsx";
 import DynamicChart3D from "./DynamicChart3D.jsx";
 import ChartRenderer from "./ChartRenderer.jsx";
 import { toRendererConfig } from "../utils/dynamicChartUtils.js";
+import { buildChartData } from "../utils/chartData.js";
 
 const BACKEND_URL = "http://localhost:8085";
 
@@ -16,6 +17,8 @@ export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDe
   
   const dataSource = chart?.dataSource;
   const dimension = chart?.dimension || chart?.options?.dimension || "2d";
+  const aggregation = chart?.options?.aggregation || chart?.aggregation || "none";
+  const topN = chart?.options?.topN || chart?.topN || 0;
   
   useEffect(() => {
     if (!dataSource) {
@@ -50,6 +53,43 @@ export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDe
     
     return () => clearInterval(interval);
   }, [dataSource]);
+
+  // Process chart data with aggregation
+  const processedChartData = useMemo(() => {
+    if (!chartData.length) {
+      return chartData;
+    }
+    
+    // Get chart configuration
+    const rendererConfig = toRendererConfig(chart);
+    if (!rendererConfig) {
+      return chartData;
+    }
+    
+    const mappings = rendererConfig.mappings || {};
+    const chartType = rendererConfig.chartType || chart?.type || chart?.chartType || "bar";
+    
+    // Only apply aggregation if mappings are defined
+    if (!mappings.xField || !mappings.yFields?.length && !mappings.yField) {
+      return chartData;
+    }
+    
+    // Ensure yFields is set
+    if (!mappings.yFields || mappings.yFields.length === 0) {
+      if (mappings.yField) {
+        mappings.yFields = [mappings.yField];
+      } else {
+        return chartData;
+      }
+    }
+    
+    const options = {
+      aggregation: aggregation,
+      topN: topN
+    };
+    
+    return buildChartData(chartData, chartType, mappings, options);
+  }, [chartData, chart, aggregation, topN]);
   
   if (isLoading && dataSource) {
     return (
@@ -67,7 +107,7 @@ export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDe
     return (
       <DynamicChart3D
         chart={chart}
-        data={chartData.length > 0 ? chartData : undefined}
+        data={processedChartData.length > 0 ? processedChartData : undefined}
         onEdit={showActions ? onEdit : undefined}
         onDuplicate={showActions ? onDuplicate : undefined}
         onDelete={showActions ? onDelete : undefined}
@@ -81,10 +121,22 @@ export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDe
   } else {
     // For 2D charts in dashboard, render just the chart without card wrapper
     const rendererChart = toRendererConfig(chart);
-    const dataset = chartData.length > 0 ? chartData : [];
+    const dataset = processedChartData.length > 0 ? processedChartData : [];
     
     if (!rendererChart) {
       return null;
+    }
+    
+    // Ensure options include aggregation and topN
+    if (rendererChart.options) {
+      rendererChart.options.aggregation = aggregation;
+      rendererChart.options.topN = topN;
+    } else {
+      rendererChart.options = {
+        aggregation: aggregation,
+        topN: topN,
+        dimension: dimension
+      };
     }
     
     if (wrapInCard) {

@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import GlassCard from "../ui/GlassCard.jsx";
 import ChartRenderer from "../ui/ChartRenderer.jsx";
 import DynamicChart3D from "../ui/DynamicChart3D.jsx";
+import { buildChartData } from "../utils/chartData.js";
 
 const BACKEND_URL = "http://localhost:8085"; // change if backend runs elsewhere
 
@@ -32,6 +33,8 @@ export default function DynamicVisualizePage() {
   const [error, setError] = useState(null);
   const [chartTitle, setChartTitle] = useState("New Dynamic Visualization");
   const [connections, setConnections] = useState([]);
+  const [aggregation, setAggregation] = useState("none");
+  const [topN, setTopN] = useState(0);
 
   useEffect(() => {
     const fetchConnections = async () => {
@@ -84,6 +87,8 @@ export default function DynamicVisualizePage() {
               yField: data.chart.yField || ""
             });
             setChartDimension(data.chart.dimension || data.chart.options?.dimension || "2d");
+            setAggregation(data.chart.options?.aggregation || data.chart.aggregation || "none");
+            setTopN(data.chart.options?.topN || data.chart.topN || 0);
           } else {
             setError(data.error || "Failed to load chart configuration.");
           }
@@ -151,6 +156,30 @@ export default function DynamicVisualizePage() {
     return () => clearInterval(interval);
   }, [dataSource]);
 
+  // Process preview data with aggregation
+  const processedPreviewData = useMemo(() => {
+    if (!previewData.length || !selectedFields.xField || !selectedFields.yField) {
+      return previewData;
+    }
+    
+    const mappings = {
+      xField: selectedFields.xField,
+      yField: selectedFields.yField,
+      yFields: [selectedFields.yField],
+      categoryField: selectedFields.xField,
+      valueField: selectedFields.yField,
+      angleField: selectedFields.xField,
+      radiusField: selectedFields.yField
+    };
+    
+    const options = {
+      aggregation: aggregation,
+      topN: topN
+    };
+    
+    return buildChartData(previewData, chartType, mappings, options);
+  }, [previewData, selectedFields, chartType, aggregation, topN]);
+
   useEffect(() => {
     if (chartDimension === "3d" && chartType !== "bar") {
       setChartType("bar");
@@ -170,7 +199,12 @@ export default function DynamicVisualizePage() {
         dataSource,
         dimension: chartDimension,
         xField: selectedFields.xField,
-        yField: selectedFields.yField
+        yField: selectedFields.yField,
+        options: {
+          aggregation: aggregation,
+          topN: topN,
+          dimension: chartDimension
+        }
       };
       
       const url = isEditing 
@@ -405,6 +439,49 @@ export default function DynamicVisualizePage() {
               </select>
             </div>
             
+            {/* Aggregation Options */}
+            <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-700">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Options</h3>
+              
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="aggregation" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Aggregation
+                  </label>
+                  <select
+                    id="aggregation"
+                    value={aggregation}
+                    onChange={(e) => setAggregation(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  >
+                    <option value="none">None</option>
+                    <option value="sum">Sum</option>
+                    <option value="avg">Average</option>
+                    <option value="min">Min</option>
+                    <option value="max">Max</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label htmlFor="top-n" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Top N (0 = all)
+                  </label>
+                  <input
+                    type="number"
+                    id="top-n"
+                    min="0"
+                    value={topN}
+                    onChange={(e) => setTopN(e.target.value === "" ? 0 : Number(e.target.value))}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+              
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Use aggregation to summarize repeated categories before charting. Top N trims results to keep dashboards focused.
+              </p>
+            </div>
+            
             {/* Action Buttons */}
             <div className="flex justify-end gap-2 pt-4">
               <button
@@ -436,7 +513,7 @@ export default function DynamicVisualizePage() {
                   <p className="text-slate-500 dark:text-slate-400">Loading data...</p>
                 </div>
               </div>
-            ) : previewData.length === 0 ? (
+            ) : processedPreviewData.length === 0 ? (
               <div className="flex h-64 items-center justify-center">
                 <div className="text-center">
                   <p className="text-slate-500 dark:text-slate-400">No data available. Please select a data source.</p>
@@ -455,7 +532,7 @@ export default function DynamicVisualizePage() {
                         yField: selectedFields.yField,
                         dimension: chartDimension
                       }}
-                      data={previewData}
+                      data={processedPreviewData}
                       wrapInCard={false}
                       showActions={false}
                       showHeader={false}
@@ -479,10 +556,12 @@ export default function DynamicVisualizePage() {
                           radiusField: selectedFields.yField
                         },
                         options: {
-                          dimension: chartDimension
+                          dimension: chartDimension,
+                          aggregation: aggregation,
+                          topN: topN
                         }
                       }}
-                      data={previewData}
+                      data={processedPreviewData}
                     />
                   </div>
                 )}
@@ -513,7 +592,7 @@ export default function DynamicVisualizePage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                      {previewData.slice(0, 5).map((row, rowIndex) => (
+                      {processedPreviewData.slice(0, 5).map((row, rowIndex) => (
                         <tr key={rowIndex} className="hover:bg-white/10 dark:hover:bg-white/5">
                           {dataFields.slice(0, 5).map((field) => (
                             <td
@@ -528,13 +607,13 @@ export default function DynamicVisualizePage() {
                           )}
                         </tr>
                       ))}
-                      {previewData.length > 5 && (
+                      {processedPreviewData.length > 5 && (
                         <tr>
                           <td
                             colSpan={Math.min(dataFields.length, 6)}
                             className="px-3 py-2 text-center text-xs text-slate-500 dark:text-slate-400"
                           >
-                            {previewData.length - 5} more rows
+                            {processedPreviewData.length - 5} more rows
                           </td>
                         </tr>
                       )}

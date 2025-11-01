@@ -88,6 +88,8 @@ export const toRendererConfig = (chart) => {
     resolveField(normalized?.mappings || {}, ["radiusField", "valueField", "yField"]);
 
   const options = {
+    aggregation: normalized.options?.aggregation || normalized.aggregation || "none",
+    topN: normalized.options?.topN || normalized.topN || 0,
     ...(normalized.options || {}),
     dimension: normalized.dimension
   };
