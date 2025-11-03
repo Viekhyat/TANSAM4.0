@@ -86,7 +86,23 @@ class ConnectionManager {
   
   // Normalize parsed serial payload to a readable, chart-friendly shape
   toReadableSerialRow(parsed) {
-    const base = parsed && typeof parsed === 'object' ? { ...parsed } : {};
+    // Handle null, undefined, or non-object inputs
+    if (!parsed || typeof parsed !== 'object') {
+      parsed = { raw: String(parsed) };
+    }
+    
+    const base = { ...parsed };
+    
+    // Ensure all values are properly typed for visualization
+    Object.keys(base).forEach(key => {
+      const val = base[key];
+      if (val === 'true' || val === 'false') {
+        base[key] = val === 'true';
+      } else if (typeof val === 'string' && !isNaN(Number(val)) && val.trim() !== '') {
+        base[key] = Number(val);
+      }
+    });
+    
     // Prefer provided timestamps if present (ts, time, timestamp)
     const candidateTs = base.timestamp || base.ts || base.time;
     if (candidateTs !== undefined && candidateTs !== null) {
@@ -108,12 +124,21 @@ class ConnectionManager {
         base.timestamp = tsIso;
       }
     }
+    
+    // Always ensure timestamp exists
+    if (!base.timestamp) {
+      base.timestamp = new Date().toISOString();
+    }
+    
+    // Add metadata fields if not present
     if (!Object.prototype.hasOwnProperty.call(base, 'source')) {
       base.source = 'serial';
     }
     if (!Object.prototype.hasOwnProperty.call(base, 'status')) {
       base.status = 'ok';
     }
+    
+    // Ensure a 'value' field exists for charts that need a primary value
     const numericKeys = Object.keys(base).filter((k) => typeof base[k] === 'number');
     const preferred = ['value', 'val', 'reading', 'batt', 'battery', 'temp', 'temperature', 'hum', 'humid', 'humidity', 'press', 'pressure', 'co2', 'lux'];
     const preferredKey = preferred.find((k) => Object.prototype.hasOwnProperty.call(base, k) && typeof base[k] === 'number');
@@ -121,6 +146,12 @@ class ConnectionManager {
     if (firstNumericKey && !Object.prototype.hasOwnProperty.call(base, 'value')) {
       base.value = base[firstNumericKey];
     }
+    
+    // If no numeric values found, add a default value field
+    if (numericKeys.length === 0 && !base.value) {
+      base.value = 0;
+    }
+    
     return base;
   }
   

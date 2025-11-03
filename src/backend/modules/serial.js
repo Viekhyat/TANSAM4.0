@@ -18,6 +18,20 @@ export function createSerialConnection(config) {
       console.log(`✅ Serial port opened: ${config.port} at ${config.baudRate} baud`);
     });
     
+    // Handle parser errors to prevent crashes
+    parser.on('error', (err) => {
+      console.error(`❌ Serial parser error (${config.port}):`, err.message);
+    });
+    
+    // Add data transformation to ensure proper format
+    parser.on('data', (data) => {
+      // Log raw data for debugging
+      console.log(`🔄 Raw serial data received (${config.port}):`, data);
+      
+      // Data transformation happens in connectionManager.js
+      // This listener is just for debugging purposes
+    });
+    
     // Optional: low-level byte logging for diagnostics (single line preview)
     // Uncomment if needed to debug devices that don't send newlines
     // port.on('data', (buf) => {
