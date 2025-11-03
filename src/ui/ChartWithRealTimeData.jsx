@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import DynamicChart2D from "./DynamicChart2D.jsx";
 import DynamicChart3D from "./DynamicChart3D.jsx";
 import ChartRenderer from "./ChartRenderer.jsx";
@@ -14,6 +14,7 @@ const BACKEND_URL = "http://localhost:8085";
 export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDelete, className, wrapInCard = false, showActions = false }) {
   const [chartData, setChartData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const abortControllerRef = useRef(null);
   
   const dataSource = chart?.dataSource;
   const dimension = chart?.dimension || chart?.options?.dimension || "2d";
@@ -28,8 +29,16 @@ export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDe
     }
     
     const fetchData = async () => {
+      // Cancel previous request if it exists
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
+      
       try {
-        const response = await fetch(`${BACKEND_URL}/api/data/${dataSource}`);
+        const response = await fetch(`${BACKEND_URL}/api/data/${dataSource}`, { signal });
         const data = await response.json();
         
         if (data.success && Array.isArray(data.data) && data.data.length > 0) {
@@ -42,16 +51,25 @@ export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDe
         }
         setIsLoading(false);
       } catch (err) {
+        // Don't set error if request was aborted
+        if (err.name === 'AbortError') {
+          return;
+        }
         console.error("Error fetching chart data:", err);
         setIsLoading(false);
       }
     };
     
-    // Fetch immediately and then poll every 2 seconds for real-time updates
+    // Fetch immediately and then poll every 15 seconds for better performance
     fetchData();
-    const interval = setInterval(fetchData, 2000); // Poll every 2 seconds for real-time EDA
+    const interval = setInterval(fetchData, 15000); // Poll every 15 seconds to reduce load
     
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [dataSource]);
 
   // Process chart data with aggregation

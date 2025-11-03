@@ -8,12 +8,18 @@ import { defaultPalette } from "../utils/colors.js";
 
 const chartDefinitions = [
   { value: "line", label: "Line", description: "Track trends across a dimension" },
-  { value: "bar", label: "Bar", description: "Compare values side-by-side" },
-  { value: "area", label: "Area", description: "Emphasize cumulative totals" },
-  { value: "scatter", label: "Scatter", description: "Spot relationships between metrics" },
+  { value: "bar", label: "Bar Plot", description: "Compare values side-by-side" },
+  { value: "area", label: "Area Plot", description: "Emphasize cumulative totals" },
+  { value: "scatter", label: "Scatter Plot", description: "Visualize relationships between variables" },
   { value: "pie", label: "Pie", description: "Show proportional breakdown" },
   { value: "donut", label: "Donut", description: "Pie chart with an open center" },
-  { value: "radar", label: "Radar", description: "Compare metrics across categories" }
+  { value: "radar", label: "Radar", description: "Compare metrics across categories" },
+  { value: "histogram", label: "Histogram", description: "Shows data distribution" },
+  { value: "box", label: "Box Plot", description: "Identifies outliers and data spread" },
+  { value: "gauge", label: "Gauge Chart", description: "Shows progress or KPI value" },
+  { value: "scatter3d", label: "3D Scatter Plot", description: "Relationship among three variables" },
+  { value: "surface3d", label: "3D Surface Plot", description: "Trend or pattern visualization in 3D" },
+  { value: "line3d", label: "3D Line Plot", description: "Time or path-based 3D trend visualization" }
 ];
 
 const createDefaultValues = () => ({
@@ -25,6 +31,7 @@ const createDefaultValues = () => ({
     yFields: [],
     stacked: false,
     yField: "",
+    zField: "",
     categoryField: "",
     valueField: "",
     donut: true,
@@ -72,6 +79,7 @@ const suggestMappings = (chartType, meta, current) => {
       xField: "",
       yFields: [],
       yField: "",
+      zField: "",
       categoryField: "",
       valueField: "",
       angleField: "",
@@ -115,6 +123,20 @@ const suggestMappings = (chartType, meta, current) => {
     }
     if (!mapHasField(current.radiusField)) {
       suggestions.radiusField = firstNumeric;
+    }
+  } else if (["histogram", "box", "gauge"].includes(chartType)) {
+    if (!mapHasField(current.yField)) {
+      suggestions.yField = firstNumeric;
+    }
+  } else if (["scatter3d", "surface3d", "line3d"].includes(chartType)) {
+    if (!mapHasField(current.xField)) {
+      suggestions.xField = firstNumeric;
+    }
+    if (!mapHasField(current.yField)) {
+      suggestions.yField = secondNumeric || firstNumeric;
+    }
+    if (!mapHasField(current.zField)) {
+      suggestions.zField = numericFields[2] || secondNumeric || firstNumeric;
     }
   }
 
@@ -591,6 +613,80 @@ export default function VisualizePage() {
                           ))}
                         </select>
                         {mappingHint(mappings.radiusField, "number")}
+                      </label>
+                    </div>
+                  ) : null}
+
+                  {["histogram", "box", "gauge"].includes(chartType) ? (
+                    <div>
+                      <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                        Value field (numeric)
+                        <select
+                          value={mappings.yField || ""}
+                          onChange={(event) => setValue("mappings.yField", event.target.value, { shouldDirty: true })}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100"
+                        >
+                          <option value="">Select column</option>
+                          {meta.headers.map((header) => (
+                            <option key={header} value={header}>
+                              {header} ({fieldTypeLabel(header, typeMap)})
+                            </option>
+                          ))}
+                        </select>
+                        {mappingHint(mappings.yField, "number")}
+                      </label>
+                    </div>
+                  ) : null}
+
+                  {["scatter3d", "surface3d", "line3d"].includes(chartType) ? (
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                        X field (numeric)
+                        <select
+                          value={mappings.xField || ""}
+                          onChange={(event) => setValue("mappings.xField", event.target.value, { shouldDirty: true })}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100"
+                        >
+                          <option value="">Select column</option>
+                          {meta.headers.map((header) => (
+                            <option key={header} value={header}>
+                              {header} ({fieldTypeLabel(header, typeMap)})
+                            </option>
+                          ))}
+                        </select>
+                        {mappingHint(mappings.xField, "number")}
+                      </label>
+                      <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                        Y field (numeric)
+                        <select
+                          value={mappings.yField || ""}
+                          onChange={(event) => setValue("mappings.yField", event.target.value, { shouldDirty: true })}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100"
+                        >
+                          <option value="">Select column</option>
+                          {meta.headers.map((header) => (
+                            <option key={header} value={header}>
+                              {header} ({fieldTypeLabel(header, typeMap)})
+                            </option>
+                          ))}
+                        </select>
+                        {mappingHint(mappings.yField, "number")}
+                      </label>
+                      <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                        Z field (numeric)
+                        <select
+                          value={mappings.zField || ""}
+                          onChange={(event) => setValue("mappings.zField", event.target.value, { shouldDirty: true })}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100"
+                        >
+                          <option value="">Select column</option>
+                          {meta.headers.map((header) => (
+                            <option key={header} value={header}>
+                              {header} ({fieldTypeLabel(header, typeMap)})
+                            </option>
+                          ))}
+                        </select>
+                        {mappingHint(mappings.zField, "number")}
                       </label>
                     </div>
                   ) : null}

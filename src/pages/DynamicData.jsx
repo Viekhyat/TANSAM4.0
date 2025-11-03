@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { useStore } from "../providers/StoreContext.jsx";
 import { inferTypes, coerceRows } from "../utils/parseData.js";
 
+// WebSocket connection for real-time data
+const WS_URL = "ws://localhost:8085";
+
 // --- SQL Table Selector Component ---
 function SqlTableSelector({ selectedId, onTablesSelected }) {
   const [availableTables, setAvailableTables] = useState([]);
@@ -257,11 +260,46 @@ export default function DynamicData() {
       const res = await fetch(`${BACKEND}/api/data/${id}`);
       const j = await res.json();
       console.log(`📥 Data fetch response for ${id}:`, j);
+      
+      // Check if this is a serial connection
+      const selectedConn = connections.find(c => c.id === id);
+      const isSerial = selectedConn && selectedConn.type === "serial";
+      
       if (j.success && Array.isArray(j.data)) {
         console.log(`✅ Received ${j.data.length} tables with data`);
         j.data.forEach((table, idx) => {
           console.log(`  Table ${idx}: "${table.table}" with ${table.rows?.length || 0} rows`);
         });
+        
+        // For serial data, ensure we have a proper table structure
+        if (isSerial && j.data.length > 0) {
+          // Create a proper table structure for serial data
+          const serialData = j.data[0];
+          if (Array.isArray(serialData)) {
+            // Direct array of rows from connectionManager.js
+            const serialTable = {
+              table: 'serial_data',
+              rows: serialData
+            };
+            
+            // Extract headers and types from the first row if available
+            if (serialData.length > 0) {
+              const firstRow = serialData[0];
+              serialTable.headers = Object.keys(firstRow);
+              serialTable.types = serialTable.headers.map(header => {
+                const value = firstRow[header];
+                if (typeof value === 'number') return 'number';
+                if (typeof value === 'boolean') return 'boolean';
+                return 'string';
+              });
+            }
+            
+            // Replace the raw data with our formatted table
+            j.data[0] = serialTable;
+            console.log("Serial data formatted:", serialTable);
+          }
+        }
+        
         setCached(j.data);
         lastUpdateRef.current = Date.now();
       } else {
@@ -280,12 +318,22 @@ export default function DynamicData() {
 
   useEffect(() => {
     if (!selectedId) return;
-    // Poll every 2 seconds for real-time updates - always fetch to get flowing data
-    const interval = setInterval(() => {
+    
+    // Get connection type
+    const selectedConn = connections.find(c => c.id === selectedId);
+    const isSerial = selectedConn && selectedConn.type === "serial";
+    
+    // For non-serial connections, poll every 2 seconds
+    if (!isSerial) {
+      const interval = setInterval(() => {
+        fetchDataFor(selectedId);
+      }, 2000);
+      return () => clearInterval(interval);
+    } else {
+      // For serial connections, fetch once to initialize
       fetchDataFor(selectedId);
-    }, 2000); // Poll every 2 seconds for real-time EDA
-    return () => clearInterval(interval);
-  }, [selectedId]);
+    }
+  }, [selectedId, connections]);
 
   useEffect(() => {
     fetchConnections();
@@ -297,6 +345,7 @@ export default function DynamicData() {
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
+        console.log("📥 WebSocket message received:", msg);
         if (msg.type === "update") {
           lastUpdateRef.current = Date.now();
           setConnections((prev) =>
@@ -306,7 +355,49 @@ export default function DynamicData() {
                 : c
             )
           );
-          if (msg.id === selectedId) fetchDataFor(msg.id);
+          
+          // Handle serial data updates
+          if (msg.id === selectedId) {
+            if (msg.topic === "serial_data") {
+              console.log("📊 Received serial data update:", msg.rows);
+              // For serial data, update the cached data directly
+              setCached(prevCached => {
+                // Find or create the serial data table
+                let serialTable = prevCached.find(t => t.table === "serial_data");
+                
+                if (!serialTable) {
+                  // Create a new table if it doesn't exist
+                  const newRow = msg.rows[0];
+                  serialTable = { 
+                    table: "serial_data", 
+                    rows: [], 
+                    headers: Object.keys(newRow),
+                    types: Object.keys(newRow).map(key => {
+                      const val = newRow[key];
+                      if (typeof val === 'number') return 'number';
+                      if (typeof val === 'boolean') return 'boolean';
+                      return 'string';
+                    })
+                  };
+                  return [...prevCached, serialTable];
+                }
+                
+                // Add the new row to the table
+                const updatedTable = {
+                  ...serialTable,
+                  rows: [...msg.rows, ...(serialTable.rows || [])].slice(0, 100)
+                };
+                
+                // Force a re-render by updating the lastUpdateRef
+                lastUpdateRef.current = Date.now();
+                
+                // Replace the table in the cached data
+                return prevCached.map(t => 
+                  t.table === "serial_data" ? updatedTable : t
+                );
+              });
+            }
+          }
         } else if (msg.type === "removed") {
           fetchConnections();
           if (msg.id === selectedId) {

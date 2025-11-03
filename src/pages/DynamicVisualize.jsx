@@ -1,18 +1,25 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import GlassCard from "../ui/GlassCard.jsx";
 import ChartRenderer from "../ui/ChartRenderer.jsx";
 import DynamicChart3D from "../ui/DynamicChart3D.jsx";
+import Dynamic3DCharts from "../ui/Dynamic3DCharts.jsx";
 import { buildChartData } from "../utils/chartData.js";
 
 const BACKEND_URL = "http://localhost:8085"; // change if backend runs elsewhere
 
 const chartTypes = [
   { value: "line", label: "Line", description: "Track trends across time" },
-  { value: "bar", label: "Bar", description: "Compare values side-by-side" },
-  { value: "area", label: "Area", description: "Emphasize cumulative totals" },
+  { value: "bar", label: "Bar Plot", description: "Compare values side-by-side" },
+  { value: "area", label: "Area Plot", description: "Emphasize cumulative totals" },
   { value: "pie", label: "Pie", description: "Show proportional breakdown" },
-  { value: "scatter", label: "Scatter", description: "Show correlation between variables" }
+  { value: "scatter", label: "Scatter Plot", description: "Visualize relationships between variables" },
+  { value: "histogram", label: "Histogram", description: "Shows data distribution" },
+  { value: "box", label: "Box Plot", description: "Identifies outliers and data spread" },
+  { value: "gauge", label: "Gauge Chart", description: "Shows progress or KPI value" },
+  { value: "scatter3d", label: "3D Scatter Plot", description: "Relationship among three variables" },
+  { value: "surface3d", label: "3D Surface Plot", description: "Trend or pattern visualization in 3D" },
+  { value: "line3d", label: "3D Line Plot", description: "Time or path-based 3D trend visualization" }
 ];
 
 export default function DynamicVisualizePage() {
@@ -26,7 +33,8 @@ export default function DynamicVisualizePage() {
   const [dataFields, setDataFields] = useState([]);
   const [selectedFields, setSelectedFields] = useState({
     xField: "",
-    yField: ""
+    yField: "",
+    zField: ""
   });
   const [previewData, setPreviewData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +43,12 @@ export default function DynamicVisualizePage() {
   const [connections, setConnections] = useState([]);
   const [aggregation, setAggregation] = useState("none");
   const [topN, setTopN] = useState(0);
+
+  // Keep latest selectedFields to avoid stale closure inside polling interval
+  const selectedFieldsRef = useRef(selectedFields);
+  useEffect(() => {
+    selectedFieldsRef.current = selectedFields;
+  }, [selectedFields]);
 
   useEffect(() => {
     const fetchConnections = async () => {
@@ -84,7 +98,8 @@ export default function DynamicVisualizePage() {
             setDataSource(data.chart.dataSource);
             setSelectedFields({
               xField: data.chart.xField || "",
-              yField: data.chart.yField || ""
+              yField: data.chart.yField || "",
+              zField: data.chart.zField || ""
             });
             setChartDimension(data.chart.dimension || data.chart.options?.dimension || "2d");
             setAggregation(data.chart.options?.aggregation || data.chart.aggregation || "none");
@@ -128,15 +143,45 @@ export default function DynamicVisualizePage() {
           if (flatData.length > 0) {
             const fields = Object.keys(flatData[0]);
             setDataFields(fields);
-            
-            // Set default selected fields if not already set
-            if (!selectedFields.xField || !selectedFields.yField) {
+
+            // Infer numeric fields from a small sample
+            const sample = flatData.slice(0, Math.min(20, flatData.length));
+            const isNumericField = (key) => {
+              let numericCount = 0;
+              for (const row of sample) {
+                const v = row?.[key];
+                if (v === null || v === undefined) continue;
+                const n = typeof v === 'number' ? v : (typeof v === 'string' ? Number(v.trim()) : NaN);
+                if (Number.isFinite(n)) numericCount++;
+              }
+              return numericCount > 0 && numericCount >= Math.ceil(sample.length * 0.3);
+            };
+            const numericFields = fields.filter(isNumericField);
+
+            // Set defaults only if not already chosen (use ref to avoid stale closure)
+            if (!selectedFieldsRef.current.xField || !selectedFieldsRef.current.yField) {
+              const lower = fields.map(f => f.toLowerCase());
+              const idxTimestamp = lower.indexOf('timestamp');
+              const idxTimeLike = idxTimestamp !== -1
+                ? idxTimestamp
+                : lower.findIndex(f => f.includes('date') || f.includes('time'));
+              const xDefault = idxTimeLike !== -1 ? fields[idxTimeLike] : fields[0];
+
+              // Prefer common sensor value keys, then any numeric field not equal to x
+              const preferredYKeys = ['value', 'val', 'reading', 'batt', 'battery', 'temp', 'temperature', 'hum', 'humidity'];
+              const yFromPreferred = preferredYKeys
+                .map(k => fields[lower.indexOf(k)])
+                .find(Boolean);
+              const yNumeric = (numericFields.find(f => f !== xDefault)) || fields.find(f => f !== xDefault);
+              const yDefault = yFromPreferred || yNumeric || fields[0];
+
               setSelectedFields({
-                xField: fields.find(f => f.toLowerCase().includes('date') || f.toLowerCase().includes('time')) || fields[0],
-                yField: fields.find(f => f.toLowerCase().includes('value') || f.toLowerCase().includes('count')) || fields[1] || fields[0]
+                xField: xDefault,
+                yField: yDefault,
+                zField: numericFields.find(f => f !== xDefault && f !== yDefault) || fields[2] || fields[1] || fields[0]
               });
             }
-            
+
             setPreviewData(flatData);
           }
         }
@@ -200,6 +245,7 @@ export default function DynamicVisualizePage() {
         dimension: chartDimension,
         xField: selectedFields.xField,
         yField: selectedFields.yField,
+        zField: selectedFields.zField,
         options: {
           aggregation: aggregation,
           topN: topN,
@@ -313,7 +359,7 @@ export default function DynamicVisualizePage() {
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {chartTypes.map((type) => {
-                  const isDisabled = chartDimension === "3d" && type.value !== "bar";
+                  const isDisabled = chartDimension === "3d" && !["bar", "scatter3d", "surface3d", "line3d"].includes(type.value);
                   const isActive = chartType === type.value;
                   return (
                     <button
@@ -439,6 +485,29 @@ export default function DynamicVisualizePage() {
               </select>
             </div>
             
+            {/* Z-Axis Field (for 3D charts) */}
+            {["scatter3d", "surface3d", "line3d"].includes(chartType) && (
+              <div>
+                <label htmlFor="z-field" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Z-Axis Field
+                </label>
+                <select
+                  id="z-field"
+                  value={selectedFields.zField}
+                  onChange={(e) => setSelectedFields({ ...selectedFields, zField: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  disabled={dataFields.length === 0}
+                >
+                  <option value="">Select Z-Axis field</option>
+                  {dataFields.map((field) => (
+                    <option key={field} value={field}>
+                      {field}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            
             {/* Aggregation Options */}
             <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Options</h3>
@@ -521,7 +590,28 @@ export default function DynamicVisualizePage() {
               </div>
             ) : (
               <>
-                {chartDimension === "3d" ? (
+                {["scatter3d", "surface3d", "line3d"].includes(chartType) ? (
+                  <div className="h-96">
+                    <ChartRenderer
+                      chart={{
+                        chartType,
+                        title: chartTitle,
+                        mappings: {
+                          xField: selectedFields.xField,
+                          yField: selectedFields.yField,
+                          zField: selectedFields.zField,
+                          yFields: selectedFields.yField ? [selectedFields.yField] : []
+                        },
+                        options: {
+                          dimension: "3d",
+                          aggregation: aggregation,
+                          topN: topN
+                        }
+                      }}
+                      data={processedPreviewData}
+                    />
+                  </div>
+                ) : chartDimension === "3d" ? (
                   <div className="flex h-96 items-center justify-center">
                     <DynamicChart3D
                       chart={{

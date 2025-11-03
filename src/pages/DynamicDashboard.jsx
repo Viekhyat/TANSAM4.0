@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import GlassCard from "../ui/GlassCard.jsx";
 import ChartWithRealTimeData from "../ui/ChartWithRealTimeData.jsx";
@@ -18,6 +18,76 @@ const formatNumber = (value) => {
   return value.toString();
 };
 
+// Memoized chart card component to prevent unnecessary re-renders
+const ChartCard = React.memo(({ chart, connections, onEdit, onDuplicate, onDelete }) => {
+  const connection = connections.find(c => c.id === chart.dataSource);
+  const connectionName = connection?.config?.name || chart.dataSource || "Unknown connection";
+  
+  return (
+    <GlassCard className="flex flex-col gap-3 shadow-xl">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{chart.title}</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-300">
+            {connectionName} - Updated {chart.updatedAt ? new Date(chart.updatedAt).toLocaleString() : "unknown"}
+          </p>
+        </div>
+        <div className="flex gap-2 text-xs font-semibold">
+          <button
+            onClick={() => onEdit(chart.id)}
+            className="glass-hover rounded-full border border-white/20 px-3 py-1 text-slate-600 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-slate-200/20 dark:text-slate-300 dark:hover:bg-white/5 dark:focus-visible:ring-offset-slate-900"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => onDuplicate(chart.id)}
+            className="glass-hover rounded-full border border-white/20 px-3 py-1 text-slate-600 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-slate-200/20 dark:text-slate-300 dark:hover:bg-white/5 dark:focus-visible:ring-offset-slate-900"
+          >
+            Duplicate
+          </button>
+          <button
+            onClick={() => onDelete(chart.id)}
+            className="glass-hover rounded-full border border-transparent px-3 py-1 text-red-500 transition hover:border-red-100 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:hover:bg-red-500/20 dark:focus-visible:ring-offset-slate-900"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 rounded-2xl bg-slate-50 p-4 transition-colors dark:bg-slate-800/50">
+        <ChartWithRealTimeData
+          chart={chart}
+          onEdit={onEdit}
+          onDuplicate={onDuplicate}
+          onDelete={onDelete}
+        />
+      </div>
+      <div className="grid gap-3 text-xs text-slate-500 sm:grid-cols-3 dark:text-slate-300">
+        <div className="rounded-xl bg-slate-100 px-3 py-2 transition-colors dark:bg-slate-800/60">
+          <span className="block font-semibold text-slate-700 dark:text-slate-200">Type</span>
+          <span className="uppercase">{chart.type || chart.chartType || "line"}</span>
+        </div>
+        <div className="rounded-xl bg-slate-100 px-3 py-2 transition-colors dark:bg-slate-800/60">
+          <span className="block font-semibold text-slate-700 dark:text-slate-200">Dimension</span>
+          <span className="uppercase">{chart.dimension || "2d"}</span>
+        </div>
+        <div className="rounded-xl bg-slate-100 px-3 py-2 transition-colors dark:bg-slate-800/60">
+          <span className="block font-semibold text-slate-700 dark:text-slate-200">Source</span>
+          <span className="truncate">{connectionName}</span>
+        </div>
+      </div>
+    </GlassCard>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison to prevent re-renders when chart data hasn't changed
+  return (
+    prevProps.chart.id === nextProps.chart.id &&
+    prevProps.chart.updatedAt === nextProps.chart.updatedAt &&
+    prevProps.connections.length === nextProps.connections.length
+  );
+});
+
+ChartCard.displayName = 'ChartCard';
+
 export default function DynamicDashboard() {
   const [chartRecords, setChartRecords] = useState([]);
   const [connections, setConnections] = useState([]);
@@ -25,6 +95,7 @@ export default function DynamicDashboard() {
   const [statusMessage, setStatusMessage] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const navigate = useNavigate();
+  const abortControllerRef = useRef(null);
 
   const normalizedCharts = useMemo(() => normalizeDynamicCharts(chartRecords), [chartRecords]);
   const { twoD: charts2D, threeD: charts3D } = useMemo(
@@ -68,11 +139,19 @@ export default function DynamicDashboard() {
   );
 
   const fetchDashboardData = useCallback(async () => {
+    // Cancel any in-flight requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+    
     setLoading(true);
     try {
       const [connectionsResponse, chartsResponse] = await Promise.all([
-        fetch(`${BACKEND_URL}/api/connections`),
-        fetch(`${BACKEND_URL}/api/charts`)
+        fetch(`${BACKEND_URL}/api/connections`, { signal }),
+        fetch(`${BACKEND_URL}/api/charts`, { signal })
       ]);
 
       const connectionsData = await connectionsResponse.json();
@@ -88,6 +167,10 @@ export default function DynamicDashboard() {
       setStatusMessage(null);
       persistCache(nextCharts, nextConnections, timestamp);
     } catch (error) {
+      // Don't set error if request was aborted
+      if (error.name === 'AbortError') {
+        return;
+      }
       console.error("Error fetching data:", error);
       const cached = loadDynamicDashboardCache();
       if (cached) {
@@ -106,7 +189,12 @@ export default function DynamicDashboard() {
   useEffect(() => {
     fetchDashboardData();
     const interval = setInterval(fetchDashboardData, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [fetchDashboardData]);
 
   const handleAddChart = () => {
@@ -271,65 +359,16 @@ export default function DynamicDashboard() {
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
             {normalizedCharts
               .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
-              .map((chart) => {
-                const connection = connections.find(c => c.id === chart.dataSource);
-                const connectionName = connection?.config?.name || chart.dataSource || "Unknown connection";
-                
-                return (
-                  <GlassCard key={chart.id} className="flex flex-col gap-3 shadow-xl">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{chart.title}</h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-300">
-                          {connectionName} - Updated {chart.updatedAt ? new Date(chart.updatedAt).toLocaleString() : "unknown"}
-                        </p>
-                      </div>
-                      <div className="flex gap-2 text-xs font-semibold">
-                        <button
-                          onClick={() => handleEditChart(chart.id)}
-                          className="glass-hover rounded-full border border-white/20 px-3 py-1 text-slate-600 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-slate-200/20 dark:text-slate-300 dark:hover:bg-white/5 dark:focus-visible:ring-offset-slate-900"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDuplicateChart(chart.id)}
-                          className="glass-hover rounded-full border border-white/20 px-3 py-1 text-slate-600 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-slate-200/20 dark:text-slate-300 dark:hover:bg-white/5 dark:focus-visible:ring-offset-slate-900"
-                        >
-                          Duplicate
-                        </button>
-                        <button
-                          onClick={() => handleDeleteChart(chart.id)}
-                          className="glass-hover rounded-full border border-transparent px-3 py-1 text-red-500 transition hover:border-red-100 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:hover:bg-red-500/20 dark:focus-visible:ring-offset-slate-900"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex-1 rounded-2xl bg-slate-50 p-4 transition-colors dark:bg-slate-800/50">
-                      <ChartWithRealTimeData
-                        chart={chart}
-                        onEdit={handleEditChart}
-                        onDuplicate={handleDuplicateChart}
-                        onDelete={handleDeleteChart}
-                      />
-                    </div>
-                    <div className="grid gap-3 text-xs text-slate-500 sm:grid-cols-3 dark:text-slate-300">
-                      <div className="rounded-xl bg-slate-100 px-3 py-2 transition-colors dark:bg-slate-800/60">
-                        <span className="block font-semibold text-slate-700 dark:text-slate-200">Type</span>
-                        <span className="uppercase">{chart.type || chart.chartType || "line"}</span>
-                      </div>
-                      <div className="rounded-xl bg-slate-100 px-3 py-2 transition-colors dark:bg-slate-800/60">
-                        <span className="block font-semibold text-slate-700 dark:text-slate-200">Dimension</span>
-                        <span className="uppercase">{chart.dimension || "2d"}</span>
-                      </div>
-                      <div className="rounded-xl bg-slate-100 px-3 py-2 transition-colors dark:bg-slate-800/60">
-                        <span className="block font-semibold text-slate-700 dark:text-slate-200">Source</span>
-                        <span className="truncate">{connectionName}</span>
-                      </div>
-                    </div>
-                  </GlassCard>
-                );
-              })}
+              .map((chart) => (
+                <ChartCard
+                  key={chart.id}
+                  chart={chart}
+                  connections={connections}
+                  onEdit={handleEditChart}
+                  onDuplicate={handleDuplicateChart}
+                  onDelete={handleDeleteChart}
+                />
+              ))}
             <GlassCard className="flex h-[300px] flex-col items-center justify-center gap-3 border-2 border-dashed border-white/40 text-center shadow-xl dark:border-slate-200/30">
               <div className="rounded-full bg-brand-100 p-4 dark:bg-brand-500/20">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-brand-500">

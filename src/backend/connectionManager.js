@@ -10,8 +10,161 @@ class ConnectionManager {
     this.wss = null; // WebSocket server reference
   }
   
+  // Attempt to coerce non-JSON serial lines into a flat object for charts
+  parseNonJsonSerialLine(line) {
+    const text = (typeof line === 'string' ? line : String(line)).trim();
+    if (text.length === 0) return { raw: '' };
+    
+    // Single numeric value -> { value: number }
+    if (/^[+-]?\d+(?:\.\d+)?$/.test(text)) {
+      const num = Number(text);
+      return Number.isNaN(num) ? { raw: text } : { value: num };
+    }
+    
+    // Key=value or key:value pairs (separated by comma/semicolon/space)
+    if (/[=:]/.test(text)) {
+      const result = {};
+      const tokens = text.split(/[;,\s]+/).filter(Boolean);
+      for (const token of tokens) {
+        const sepIndexEq = token.indexOf('=');
+        const sepIndexCol = token.indexOf(':');
+        let sepIndex = -1;
+        let sepChar = '';
+        if (sepIndexEq !== -1 && (sepIndexCol === -1 || sepIndexEq < sepIndexCol)) { sepIndex = sepIndexEq; sepChar = '='; }
+        else if (sepIndexCol !== -1) { sepIndex = sepIndexCol; sepChar = ':'; }
+        if (sepIndex > 0) {
+          const key = token.slice(0, sepIndex).trim().replace(/[^A-Za-z0-9_]/g, '_') || 'field';
+          const valRaw = token.slice(sepIndex + 1).trim();
+          const numVal = Number(valRaw);
+          result[key] = Number.isNaN(numVal) ? valRaw : numVal;
+        }
+      }
+      if (Object.keys(result).length > 0) return result;
+    }
+    
+    // CSV-like values -> { value1, value2, ... }
+    if (text.includes(',')) {
+      const parts = text.split(',').map(s => s.trim());
+      const obj = {};
+      parts.forEach((p, idx) => {
+        const numVal = Number(p);
+        obj[`value${idx + 1}`] = Number.isNaN(numVal) ? p : numVal;
+      });
+      return obj;
+    }
+    
+    return { raw: text };
+  }
+
+  // Try to repair common malformed JSON fragments into valid JSON strings
+  tryRepairJsonString(line) {
+    let text = (typeof line === 'string' ? line : String(line)).trim();
+    if (!text) return null;
+    
+    // If it looks like key":value} without opening brace or opening quote
+    if (!text.startsWith('{')) {
+      // Quote unquoted keys: batt:81 -> "batt":81
+      text = text.replace(/([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '"$1":');
+      // If it now starts with a quoted key, prepend '{'
+      if (/^"[^"]+"\s*:/.test(text)) {
+        text = `{${text}`;
+      }
+    }
+    // Ensure closing brace
+    if (!text.endsWith('}')) {
+      text = `${text}}`;
+    }
+    // Remove trailing commas before closing brace: {"a":1,} -> {"a":1}
+    text = text.replace(/,\s*}/g, '}');
+    
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
+  
+  // Normalize parsed serial payload to a readable, chart-friendly shape
+  toReadableSerialRow(parsed) {
+    const base = parsed && typeof parsed === 'object' ? { ...parsed } : {};
+    // Prefer provided timestamps if present (ts, time, timestamp)
+    const candidateTs = base.timestamp || base.ts || base.time;
+    if (candidateTs !== undefined && candidateTs !== null) {
+      let tsIso;
+      if (typeof candidateTs === 'number') {
+        const ms = candidateTs > 1e12 ? candidateTs : candidateTs > 1e9 ? candidateTs * 1000 : candidateTs;
+        tsIso = new Date(ms).toISOString();
+      } else if (typeof candidateTs === 'string') {
+        const n = Number(candidateTs.trim());
+        if (Number.isFinite(n)) {
+          const ms = n > 1e12 ? n : n > 1e9 ? n * 1000 : n;
+          tsIso = new Date(ms).toISOString();
+        } else {
+          const d = new Date(candidateTs);
+          tsIso = isNaN(d.getTime()) ? undefined : d.toISOString();
+        }
+      }
+      if (tsIso) {
+        base.timestamp = tsIso;
+      }
+    }
+    if (!Object.prototype.hasOwnProperty.call(base, 'source')) {
+      base.source = 'serial';
+    }
+    if (!Object.prototype.hasOwnProperty.call(base, 'status')) {
+      base.status = 'ok';
+    }
+    const numericKeys = Object.keys(base).filter((k) => typeof base[k] === 'number');
+    const preferred = ['value', 'val', 'reading', 'batt', 'battery', 'temp', 'temperature', 'hum', 'humid', 'humidity', 'press', 'pressure', 'co2', 'lux'];
+    const preferredKey = preferred.find((k) => Object.prototype.hasOwnProperty.call(base, k) && typeof base[k] === 'number');
+    const firstNumericKey = preferredKey || numericKeys.find((k) => k !== 'timestamp');
+    if (firstNumericKey && !Object.prototype.hasOwnProperty.call(base, 'value')) {
+      base.value = base[firstNumericKey];
+    }
+    return base;
+  }
+  
   setWebSocketServer(wss) {
     this.wss = wss;
+  }
+  
+  // Ensure serial listener is attached for a given connection
+  ensureSerialListener(connectionId, softLimit = 1000) {
+    const c = this.connections[connectionId];
+    if (!c || c.type !== "serial") return;
+    if (!c.dataCache) c.dataCache = [];
+    if (c.dataListenerSet) return;
+    if (!c.parser) {
+      console.error(`❌ No parser available for serial connection ${connectionId}`);
+      return;
+    }
+    c.parser.on('data', (line) => {
+      try {
+        if (!line || (typeof line === 'string' && line.trim() === '')) {
+          return;
+        }
+        console.log(`🔌 Serial line (${connectionId}):`, typeof line === 'string' ? line : JSON.stringify(line));
+        let parsed;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          const repaired = this.tryRepairJsonString(line);
+          parsed = repaired || this.parseNonJsonSerialLine(line);
+        }
+        const flatRow = { timestamp: new Date().toISOString(), ...this.toReadableSerialRow(parsed) };
+        c.dataCache.push(flatRow);
+        if (c.dataCache.length > softLimit) {
+          c.dataCache = c.dataCache.slice(-softLimit);
+        }
+        if (this.wss) {
+          this.broadcastUpdate(connectionId, "serial", flatRow);
+        }
+      } catch (err) {
+        console.error(`Error processing serial data: ${err.message}`);
+      }
+    });
+    c.dataListenerSet = true;
+    console.log(`✅ Serial data listener set up for connection ${connectionId}`);
   }
   
   broadcastUpdate(connectionId, topic, newData) {
@@ -174,7 +327,17 @@ class ConnectionManager {
         });
       }
     }
-    else if (type === "serial") entry = createSerialConnection(config);
+    else if (type === "serial") {
+      entry = createSerialConnection(config);
+      // Initialize serial-specific properties
+      entry.dataCache = [];
+      entry.dataListenerSet = false;
+      // Store connection before setting listener
+      this.connections[id] = { id, type, dbType: undefined, config, ...entry };
+      // Immediately ensure listener is attached
+      this.ensureSerialListener(id, 1000);
+      return this.connections[id];
+    }
     else if (type === "http") {
       entry = { client: createHttpConnection(config) };
       // Initialize HTTP-specific properties
@@ -386,37 +549,61 @@ class ConnectionManager {
     const c = this.connections[id];
     if (!c || c.type !== "serial") throw new Error("Not Serial");
     
-    // Initialize data cache if it doesn't exist
+    // Ensure data cache exists
     if (!c.dataCache) {
       c.dataCache = [];
-      
-      // Set up the data listener if not already set
-      if (!c.dataListenerSet) {
+    }
+
+    // Always ensure the data listener is attached once the parser exists
+    if (!c.dataListenerSet) {
+      if (c.parser) {
         c.parser.on('data', (line) => {
           try {
-            let data;
+            if (!line || (typeof line === 'string' && line.trim() === '')) {
+              return; // ignore empty lines
+            }
+            // Log the incoming line once for visibility
+            console.log(`🔌 Serial line (${id}):`, typeof line === 'string' ? line : JSON.stringify(line));
+            let parsed;
             try {
               // Try to parse as JSON first
-              data = JSON.parse(line);
+              parsed = JSON.parse(line);
             } catch {
-              // If not JSON, store as plain text
-              data = { raw: line };
+              // Attempt to repair common malformed JSON fragments
+              const repaired = this.tryRepairJsonString(line);
+              if (repaired) {
+                parsed = repaired;
+              } else {
+                // Fallback: coerce to an object for charts
+                parsed = this.parseNonJsonSerialLine(line);
+              }
             }
-            
-            c.dataCache.push({
+
+            // Normalize to flat row like MQTT/HTTP
+            const flatRow = {
               timestamp: new Date().toISOString(),
-              data
-            });
-            
-            // Keep only the latest 'limit' messages
+              ...this.toReadableSerialRow(parsed)
+            };
+
+            c.dataCache.push(flatRow);
+
+            // Keep only the latest 'limit' messages (soft cap)
             if (c.dataCache.length > limit) {
               c.dataCache = c.dataCache.slice(-limit);
+            }
+
+            // Emit WebSocket update if available
+            if (this.wss) {
+              this.broadcastUpdate(id, "serial", flatRow);
             }
           } catch (err) {
             console.error(`Error processing serial data: ${err.message}`);
           }
         });
         c.dataListenerSet = true;
+        console.log(`✅ Serial data listener set up for connection ${id}`);
+      } else {
+        console.error(`❌ No parser available for serial connection ${id}`);
       }
     }
     
