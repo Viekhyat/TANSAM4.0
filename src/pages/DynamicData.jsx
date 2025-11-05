@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { loadDynamicDataCache, saveDynamicDataCache, normalizeDataPayload } from "../utils/dynamicDataUtils.js";
 
 // --- SQL Table Selector Component ---
 function SqlTableSelector({ selectedId, onTablesSelected }) {
@@ -121,7 +122,10 @@ export default function DynamicData() {
   const [formType, setFormType] = useState("mqtt");
   const [form, setForm] = useState({ name: "", config: {} });
   const [selectedId, setSelectedId] = useState(null);
-  const [cached, setCached] = useState([]);
+  const [datasets, setDatasets] = useState([]);
+  const [statusMessage, setStatusMessage] = useState(null);
+  const [lastFetchedTs, setLastFetchedTs] = useState(null);
+  const [jsonExpanded, setJsonExpanded] = useState({});
   const wsRef = useRef(null);
   const lastUpdateRef = useRef(Date.now());
   const BACKEND = "http://localhost:8085";
