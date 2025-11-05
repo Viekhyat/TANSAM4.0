@@ -129,6 +129,8 @@ export default function DynamicData() {
   const [rawLoading, setRawLoading] = useState(false);
   const [rawJson, setRawJson] = useState(null);
   const wsRef = useRef(null);
+  const wsReconnectTimerRef = useRef(null);
+  const wsStoppedRef = useRef(false);
   const lastUpdateRef = useRef(Date.now());
   const BACKEND = "http://localhost:8085";
   const WS_URL = window.location.protocol === "https:" ? "wss://localhost:8085" : "ws://localhost:8085";
@@ -400,43 +402,58 @@ export default function DynamicData() {
     }
   };
 
-  // Polling / initial fetch when selectedId changes
+  // Polling / initial fetch when selectedId changes (all types)
   useEffect(() => {
     if (!selectedId) return;
 
-    const selectedConn = connections.find((c) => c.id === selectedId);
-    const isSerial = selectedConn && selectedConn.type === "serial";
-
-    if (!isSerial) {
-      const interval = setInterval(() => {
-        fetchDataFor(selectedId);
-      }, 2000);
-      // initial fetch
+    const interval = setInterval(() => {
       fetchDataFor(selectedId);
-      return () => clearInterval(interval);
-    } else {
-      // Serial: one-time initialize (WS will push updates)
-      fetchDataFor(selectedId);
-    }
+    }, 5000);
+    // initial fetch
+    fetchDataFor(selectedId);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, connections]);
+  }, [selectedId]);
 
-  // WebSocket for realtime updates & connections list refresh
+  // WebSocket for realtime updates & connections list refresh with auto-reconnect
   useEffect(() => {
     fetchConnections();
 
-    // clean up previous WS if any
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.close();
-    }
+    const connect = () => {
+      if (wsStoppedRef.current) return;
+      try {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.close();
+        }
+      } catch (e) { /* ignore */ }
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
 
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => console.log("🟢 WebSocket connected to backend");
-    ws.onclose = () => console.log("🔴 WebSocket disconnected");
-    ws.onerror = (err) => console.error("⚠️ WebSocket error:", err);
-    ws.onmessage = (ev) => {
+      ws.onopen = () => {
+        // clear any pending reconnect
+        if (wsReconnectTimerRef.current) {
+          clearTimeout(wsReconnectTimerRef.current);
+          wsReconnectTimerRef.current = null;
+        }
+        console.log("🟢 WebSocket connected to backend");
+      };
+      const scheduleReconnect = () => {
+        if (wsStoppedRef.current) return;
+        if (wsReconnectTimerRef.current) return;
+        wsReconnectTimerRef.current = setTimeout(() => {
+          wsReconnectTimerRef.current = null;
+          connect();
+        }, 2000);
+      };
+      ws.onclose = () => {
+        console.log("🔴 WebSocket disconnected");
+        scheduleReconnect();
+      };
+      ws.onerror = () => {
+        console.error("⚠️ WebSocket error");
+        scheduleReconnect();
+      };
+      ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
         // console.log("📥 WebSocket message received:", msg);
@@ -521,14 +538,22 @@ export default function DynamicData() {
       } catch (e) {
         console.error("❌ WS parse error:", e);
       }
+      };
     };
+    wsStoppedRef.current = false;
+    connect();
+
+    // Also refresh connections periodically to keep counts/names in sync
+    const connInterval = setInterval(fetchConnections, 5000);
 
     return () => {
-      try {
-        ws.close();
-      } catch (e) {
-        /* ignore */
+      clearInterval(connInterval);
+      wsStoppedRef.current = true;
+      if (wsReconnectTimerRef.current) {
+        clearTimeout(wsReconnectTimerRef.current);
+        wsReconnectTimerRef.current = null;
       }
+      try { wsRef.current && wsRef.current.close(); } catch (e) { /* ignore */ }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
