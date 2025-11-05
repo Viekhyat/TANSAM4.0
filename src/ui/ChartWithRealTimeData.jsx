@@ -6,6 +6,7 @@ import { toRendererConfig } from "../utils/dynamicChartUtils.js";
 import { buildChartData } from "../utils/chartData.js";
 
 const BACKEND_URL = "http://localhost:8085";
+const WS_URL = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss://localhost:8085' : 'ws://localhost:8085';
 
 /**
  * Wrapper component that fetches real-time data for charts
@@ -15,6 +16,9 @@ export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDe
   const [chartData, setChartData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const abortControllerRef = useRef(null);
+  const wsRef = useRef(null);
+  const wsReconnectTimerRef = useRef(null);
+  const wsStoppedRef = useRef(false);
   
   const dataSource = chart?.dataSource;
   const dimension = chart?.dimension || chart?.options?.dimension || "2d";
@@ -47,7 +51,8 @@ export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDe
           if (data.data[0].rows) {
             flatData = data.data.flatMap(table => table.rows);
           }
-          setChartData(flatData);
+          // Keep only the last 50 entries from the tail
+          setChartData(flatData.slice(-50));
         }
         setIsLoading(false);
       } catch (err) {
@@ -60,15 +65,73 @@ export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDe
       }
     };
     
-    // Fetch immediately and then poll every 15 seconds for better performance
+    // Fetch immediately and then poll periodically as a safety net
     fetchData();
-    const interval = setInterval(fetchData, 15000); // Poll every 15 seconds to reduce load
+    const interval = setInterval(fetchData, 5000); // 5s safety poll while WS provides realtime
     
     return () => {
       clearInterval(interval);
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
+    };
+  }, [dataSource]);
+
+  // WebSocket realtime updates for this data source with auto-reconnect
+  useEffect(() => {
+    if (!dataSource) return;
+
+    const connect = () => {
+      if (wsStoppedRef.current) return;
+      try {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.close();
+        }
+      } catch { /* ignore */ }
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+      ws.onopen = () => {
+        if (wsReconnectTimerRef.current) {
+          clearTimeout(wsReconnectTimerRef.current);
+          wsReconnectTimerRef.current = null;
+        }
+      };
+      const scheduleReconnect = () => {
+        if (wsStoppedRef.current) return;
+        if (wsReconnectTimerRef.current) return;
+        wsReconnectTimerRef.current = setTimeout(() => {
+          wsReconnectTimerRef.current = null;
+          connect();
+        }, 2000);
+      };
+      ws.onerror = () => { scheduleReconnect(); };
+      ws.onclose = () => { scheduleReconnect(); };
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg?.type !== 'update') return;
+          if (msg?.id !== dataSource) return;
+          const incoming = Array.isArray(msg.rows) ? msg.rows : (msg.row ? [msg.row] : []);
+          if (incoming.length === 0) return;
+          setChartData((prev) => {
+            const next = [...prev, ...incoming];
+            return next.slice(-50);
+          });
+        } catch {
+          // ignore
+        }
+      };
+    };
+    wsStoppedRef.current = false;
+    connect();
+
+    return () => {
+      wsStoppedRef.current = true;
+      if (wsReconnectTimerRef.current) {
+        clearTimeout(wsReconnectTimerRef.current);
+        wsReconnectTimerRef.current = null;
+      }
+      try { wsRef.current && wsRef.current.close(); } catch { /* ignore */ }
     };
   }, [dataSource]);
 
@@ -141,8 +204,56 @@ export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDe
     const rendererChart = toRendererConfig(chart);
     const dataset = processedChartData.length > 0 ? processedChartData : [];
     
+    // Infer missing mappings for pie/donut from data sample
+    if (rendererChart && ["pie", "donut"].includes(rendererChart.chartType)) {
+      const mappings = rendererChart.mappings || {};
+      const hasCategory = !!mappings.categoryField;
+      const hasValue = !!mappings.valueField;
+      // Prefer processed data; if empty, fall back to raw fetched rows
+      const sampleRows = (dataset.length > 0 ? dataset : (chartData.length > 0 ? chartData : []));
+      if ((!hasCategory || !hasValue) && sampleRows.length > 0) {
+        const sample = sampleRows[0];
+        const keys = Object.keys(sample);
+        const isNumeric = (v) => {
+          if (typeof v === 'number') return Number.isFinite(v);
+          if (typeof v === 'string') {
+            const n = Number(v.trim());
+            return Number.isFinite(n);
+          }
+          return false;
+        };
+        const numericKey = keys.find(k => isNumeric(sample[k]));
+        const categoryKey = keys.find(k => k !== numericKey);
+        if (!mappings.valueField && numericKey) {
+          mappings.valueField = numericKey;
+        }
+        if (!mappings.categoryField && categoryKey) {
+          mappings.categoryField = categoryKey;
+        }
+        rendererChart.mappings = mappings;
+        // If we inferred mappings and processed data was empty, rebuild dataset
+        if (dataset.length === 0) {
+          const opts = rendererChart.options || { aggregation, topN };
+          const rebuilt = buildChartData(sampleRows, rendererChart.chartType, mappings, {
+            aggregation: opts.aggregation ?? aggregation,
+            topN: opts.topN ?? topN
+          });
+          // Overwrite dataset reference for rendering below
+          if (Array.isArray(rebuilt)) {
+            // eslint-disable-next-line no-var
+            var inferredDataset = rebuilt;
+          }
+        }
+      }
+    }
+    
     if (!rendererChart) {
-      return null;
+
+      return (
+        <div className="w-full h-56 flex items-center justify-center text-sm text-slate-400 dark:text-slate-500">
+          Invalid chart configuration. Please edit the chart to set fields.
+        </div>
+      );
     }
     
     // Ensure options include aggregation and topN
@@ -172,7 +283,7 @@ export default function ChartWithRealTimeData({ chart, onEdit, onDuplicate, onDe
       // Render just the chart without wrapper (dashboard provides the card)
       return (
         <div className="w-full h-full">
-          <ChartRenderer chart={rendererChart} data={dataset} compact />
+          <ChartRenderer chart={rendererChart} data={typeof inferredDataset !== 'undefined' ? inferredDataset : dataset} compact />
         </div>
       );
     }

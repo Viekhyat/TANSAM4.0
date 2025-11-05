@@ -129,6 +129,8 @@ export default function DynamicData() {
   const [rawLoading, setRawLoading] = useState(false);
   const [rawJson, setRawJson] = useState(null);
   const wsRef = useRef(null);
+  const wsReconnectTimerRef = useRef(null);
+  const wsStoppedRef = useRef(false);
   const lastUpdateRef = useRef(Date.now());
   const BACKEND = "http://localhost:8085";
   const WS_URL = window.location.protocol === "https:" ? "wss://localhost:8085" : "ws://localhost:8085";
@@ -268,80 +270,129 @@ export default function DynamicData() {
         return;
       }
 
-      // j.data should be an array of tables OR serial raw array (legacy)
-      if (!Array.isArray(j.data)) {
-        console.warn("Expected j.data to be array, got:", j.data);
+      // Allow a single table object as response too
+      const payload = Array.isArray(j.data) ? j.data : (j.data && typeof j.data === "object" ? [j.data] : null);
+      if (!payload) {
+        console.warn("Expected data to be array or object with table/rows, got:", j.data);
         if (manual) alert("Invalid data format received from server.");
         return;
       }
 
       // If serial connection, normalize structure
       if (isSerial) {
-        // Some backends might return an array-of-rows directly for serial
-        if (j.data.length === 0) {
+        if (payload.length === 0) {
           setCached([]);
           lastUpdateRef.current = Date.now();
           return;
         }
-
-        // If the server returned a direct array of rows (no table wrapper)
-        // detect if first item is an object representing a row and j.data is array of rows
-        const potentialRows = j.data[0];
-        if (Array.isArray(potentialRows) || (typeof potentialRows === "object" && !Array.isArray(potentialRows))) {
-          // handle two common types:
-          // 1) j.data is [ [row1, row2, ...] ] -> then j.data[0] is array of rows
-          // 2) j.data is [ {row1}, {row2}, ... ] -> then j.data itself is the rows
-          let serialRows;
-          if (Array.isArray(potentialRows)) {
-            // case 1
-            serialRows = potentialRows;
-          } else {
-            // case 2
-            serialRows = j.data;
-          }
-
-          // build table
-          const headers = serialRows.length > 0 ? Object.keys(serialRows[0]) : [];
-          const types = headers.map((h) => {
-            const v = serialRows.length > 0 ? serialRows[0][h] : "";
-            if (typeof v === "number") return "number";
-            if (typeof v === "boolean") return "boolean";
-            return "string";
-          });
-
-          const normalizedRows = serialRows.map((row) => {
-            const normalized = {};
-            headers.forEach((h, idx) => {
-              const val = row[h];
-              if (val === undefined || val === null) {
-                normalized[h] = types[idx] === "number" ? 0 : types[idx] === "boolean" ? false : "";
-              } else {
-                normalized[h] = val;
-              }
+        const potential = payload[0];
+        // If wrapped in table object already, move to generic flow below
+        if (!potential || (typeof potential === "object" && potential.rows)) {
+          // fall through
+        } else {
+          const potentialRows = payload[0];
+          if (Array.isArray(potentialRows) || (typeof potentialRows === "object" && !Array.isArray(potentialRows))) {
+            let serialRows = Array.isArray(potentialRows) ? potentialRows : payload;
+            const tail = serialRows.slice(-50);
+            const fieldSet = new Set();
+            tail.forEach((row) => Object.keys(row || {}).forEach((k) => fieldSet.add(k)));
+            const headers = Array.from(fieldSet);
+            const types = headers.map((h) => {
+              const v = tail.find((r) => r && r[h] !== undefined && r[h] !== null)?.[h];
+              if (typeof v === "number") return "number";
+              if (typeof v === "boolean") return "boolean";
+              return "string";
             });
-            return normalized;
-          });
-
-          const serialTable = {
-            table: "serial_data",
-            headers,
-            types,
-            rows: normalizedRows.slice(0, 100), // keep recent up to 100 rows
-          };
-
-          setCached([serialTable]);
-          lastUpdateRef.current = Date.now();
-          return;
+            const normalizedRows = tail.map((row) => {
+              const normalized = {};
+              headers.forEach((h, idx) => {
+                const val = row ? row[h] : undefined;
+                if (val === undefined || val === null) {
+                  normalized[h] = types[idx] === "number" ? 0 : types[idx] === "boolean" ? false : "";
+                } else {
+                  normalized[h] = val;
+                }
+              });
+              return normalized;
+            });
+            const serialTable = { table: "serial_data", headers, types, rows: normalizedRows };
+            setCached([serialTable]);
+            lastUpdateRef.current = Date.now();
+            return;
+          }
         }
       }
 
-      // Non-serial flow: expecting j.data = [{table: 'name', rows: [...]}, ...]
-      console.log(`✅ Received ${j.data.length} tables with data`);
-      j.data.forEach((table, idx) => {
-        console.log(`  Table ${idx}: "${table.table}" with ${table.rows?.length || 0} rows`);
+      // Non-serial flow: expecting tables
+      console.log(`✅ Received ${payload.length} tables with data`);
+      payload.forEach((table, idx) => {
+        console.log(`  Table ${idx}: "${table.table || table.topic || table.endpoint || "data"}" with ${Array.isArray(table.rows) ? (table.rows?.length || 0) : 0} rows`);
       });
 
-      setCached(j.data);
+      // Helpers
+      const parseMaybeJson = (value) => {
+        if (typeof value === "string") {
+          try { return JSON.parse(value); } catch { return value; }
+        }
+        return value;
+      };
+      const flattenWrapperIfAny = (obj) => {
+        if (!obj || typeof obj !== "object") return obj;
+        // If the object has a single key that itself is an array of rows
+        const keys = Object.keys(obj);
+        if (keys.length === 1 && Array.isArray(obj[keys[0]])) {
+          return obj[keys[0]];
+        }
+        return obj;
+      };
+
+      // Normalize tables to ensure rows are array of objects and headers present
+      const normalizeTable = (t) => {
+        if (!t) return null;
+        const name = t.table || t.topic || t.endpoint || "data";
+        let headers = Array.isArray(t.headers) ? t.headers.slice() : undefined;
+        let rowsRaw = t.rows ?? t.data ?? [];
+
+        // If rows were delivered as a JSON string, parse
+        rowsRaw = parseMaybeJson(rowsRaw);
+
+        // If array of JSON strings, parse each
+        if (Array.isArray(rowsRaw) && typeof rowsRaw[0] === "string") {
+          rowsRaw = rowsRaw.map((s) => parseMaybeJson(s));
+        }
+
+        // Flatten wrapped objects like { "Serial Data": [ ... ] }
+        if (!Array.isArray(rowsRaw)) {
+          rowsRaw = flattenWrapperIfAny(rowsRaw);
+        }
+
+        let rows = Array.isArray(rowsRaw) ? rowsRaw : [];
+
+        // If rows are array-of-arrays and headers provided, map to objects
+        if (rows.length > 0 && Array.isArray(rows[0])) {
+          if (!headers || headers.length === 0) {
+            headers = rows[0].map((_, idx) => `col${idx + 1}`);
+          }
+          rows = rows.map((arr) => {
+            const obj = {};
+            headers.forEach((h, i) => { obj[h] = arr[i]; });
+            return obj;
+          });
+        }
+
+        // If rows are array of objects but no headers, derive from union of keys
+        if ((!headers || headers.length === 0) && rows.length > 0 && typeof rows[0] === "object" && !Array.isArray(rows[0])) {
+          const keySet = new Set();
+          rows.forEach((r) => Object.keys(r || {}).forEach((k) => keySet.add(k)));
+          headers = Array.from(keySet);
+        }
+
+        return { table: name, headers, rows };
+      };
+
+      const normalized = payload.map(normalizeTable).filter(Boolean);
+
+      setCached(normalized);
       lastUpdateRef.current = Date.now();
     } catch (e) {
       console.error("❌ fetchDataFor error:", e);
@@ -351,43 +402,58 @@ export default function DynamicData() {
     }
   };
 
-  // Polling / initial fetch when selectedId changes
+  // Polling / initial fetch when selectedId changes (all types)
   useEffect(() => {
     if (!selectedId) return;
 
-    const selectedConn = connections.find((c) => c.id === selectedId);
-    const isSerial = selectedConn && selectedConn.type === "serial";
-
-    if (!isSerial) {
-      const interval = setInterval(() => {
-        fetchDataFor(selectedId);
-      }, 2000);
-      // initial fetch
+    const interval = setInterval(() => {
       fetchDataFor(selectedId);
-      return () => clearInterval(interval);
-    } else {
-      // Serial: one-time initialize (WS will push updates)
-      fetchDataFor(selectedId);
-    }
+    }, 5000);
+    // initial fetch
+    fetchDataFor(selectedId);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, connections]);
+  }, [selectedId]);
 
-  // WebSocket for realtime updates & connections list refresh
+  // WebSocket for realtime updates & connections list refresh with auto-reconnect
   useEffect(() => {
     fetchConnections();
 
-    // clean up previous WS if any
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.close();
-    }
+    const connect = () => {
+      if (wsStoppedRef.current) return;
+      try {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.close();
+        }
+      } catch (e) { /* ignore */ }
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
 
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => console.log("🟢 WebSocket connected to backend");
-    ws.onclose = () => console.log("🔴 WebSocket disconnected");
-    ws.onerror = (err) => console.error("⚠️ WebSocket error:", err);
-    ws.onmessage = (ev) => {
+      ws.onopen = () => {
+        // clear any pending reconnect
+        if (wsReconnectTimerRef.current) {
+          clearTimeout(wsReconnectTimerRef.current);
+          wsReconnectTimerRef.current = null;
+        }
+        console.log("🟢 WebSocket connected to backend");
+      };
+      const scheduleReconnect = () => {
+        if (wsStoppedRef.current) return;
+        if (wsReconnectTimerRef.current) return;
+        wsReconnectTimerRef.current = setTimeout(() => {
+          wsReconnectTimerRef.current = null;
+          connect();
+        }, 2000);
+      };
+      ws.onclose = () => {
+        console.log("🔴 WebSocket disconnected");
+        scheduleReconnect();
+      };
+      ws.onerror = () => {
+        console.error("⚠️ WebSocket error");
+        scheduleReconnect();
+      };
+      ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
         // console.log("📥 WebSocket message received:", msg);
@@ -423,9 +489,35 @@ export default function DynamicData() {
                   return [...prevCached, newTable];
                 } else {
                   const newRows = Array.isArray(msg.rows) ? msg.rows : [msg.row || {}];
+                  // Recompute union headers and keep tail 50
+                  const combined = [ ...(existing.rows || []), ...newRows ];
+                  const tail = combined.slice(-50);
+                  const fieldSet = new Set();
+                  tail.forEach((row) => Object.keys(row || {}).forEach((k) => fieldSet.add(k)));
+                  const headers = Array.from(fieldSet);
+                  const types = headers.map((h) => {
+                    const v = tail.find((r) => r && r[h] !== undefined && r[h] !== null)?.[h];
+                    if (typeof v === "number") return "number";
+                    if (typeof v === "boolean") return "boolean";
+                    return "string";
+                  });
+                  const normalizedRows = tail.map((row) => {
+                    const normalized = {};
+                    headers.forEach((h, idx) => {
+                      const val = row ? row[h] : undefined;
+                      if (val === undefined || val === null) {
+                        normalized[h] = types[idx] === "number" ? 0 : types[idx] === "boolean" ? false : "";
+                      } else {
+                        normalized[h] = val;
+                      }
+                    });
+                    return normalized;
+                  });
                   const updated = {
                     ...existing,
-                    rows: [...newRows, ...(existing.rows || [])].slice(0, 100),
+                    headers,
+                    types,
+                    rows: normalizedRows,
                   };
                   return prevCached.map((t) => (t.table === "serial_data" ? updated : t));
                 }
@@ -446,14 +538,22 @@ export default function DynamicData() {
       } catch (e) {
         console.error("❌ WS parse error:", e);
       }
+      };
     };
+    wsStoppedRef.current = false;
+    connect();
+
+    // Also refresh connections periodically to keep counts/names in sync
+    const connInterval = setInterval(fetchConnections, 5000);
 
     return () => {
-      try {
-        ws.close();
-      } catch (e) {
-        /* ignore */
+      clearInterval(connInterval);
+      wsStoppedRef.current = true;
+      if (wsReconnectTimerRef.current) {
+        clearTimeout(wsReconnectTimerRef.current);
+        wsReconnectTimerRef.current = null;
       }
+      try { wsRef.current && wsRef.current.close(); } catch (e) { /* ignore */ }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
@@ -770,7 +870,10 @@ export default function DynamicData() {
                         <table className="w-full border-collapse text-sm">
                           <thead>
                             <tr className="border-b-2 border-slate-200 dark:border-slate-700">
-                              {Object.keys(tableData.rows[0]).map((key) => (
+                              {(tableData.headers && tableData.headers.length > 0
+                                ? tableData.headers
+                                : Object.keys(tableData.rows[0])
+                              ).map((key) => (
                                 <th key={key} className="p-3 text-left font-semibold text-slate-800 dark:text-slate-100">
                                   {key}
                                 </th>
@@ -778,15 +881,20 @@ export default function DynamicData() {
                             </tr>
                           </thead>
                           <tbody>
-                            {tableData.rows.map((row, j) => (
-                              <tr key={j} className={`border-b border-slate-200 dark:border-slate-700 ${j % 2 === 0 ? "bg-slate-100 dark:bg-slate-800/60" : "bg-slate-50 dark:bg-slate-800/40"}`}>
-                                {Object.entries(row).map(([key, value]) => (
-                                  <td key={key} className="p-3 text-slate-700 dark:text-slate-300 max-w-xs overflow-hidden text-ellipsis whitespace-nowrap">
-                                    {value !== null && value !== undefined ? (typeof value === "object" ? JSON.stringify(value) : String(value)) : <span className="text-slate-400 dark:text-slate-500 italic">null</span>}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
+                            {tableData.rows.map((row, j) => {
+                              const headers = (tableData.headers && tableData.headers.length > 0)
+                                ? tableData.headers
+                                : Object.keys(row);
+                              return (
+                                <tr key={j} className={`border-b border-slate-200 dark:border-slate-700 ${j % 2 === 0 ? "bg-slate-100 dark:bg-slate-800/60" : "bg-slate-50 dark:bg-slate-800/40"}`}>
+                                  {headers.map((key) => (
+                                    <td key={key} className="p-3 text-slate-700 dark:text-slate-300 max-w-xs overflow-hidden text-ellipsis whitespace-nowrap">
+                                      {row[key] !== null && row[key] !== undefined ? (typeof row[key] === "object" ? JSON.stringify(row[key]) : String(row[key])) : <span className="text-slate-400 dark:text-slate-500 italic">null</span>}
+                                    </td>
+                                  ))}
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       ) : (

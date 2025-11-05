@@ -42,15 +42,18 @@ class ConnectionManager {
       if (Object.keys(result).length > 0) return result;
     }
     
-    // CSV-like values -> { value1, value2, ... }
-    if (text.includes(',')) {
-      const parts = text.split(',').map(s => s.trim());
-      const obj = {};
-      parts.forEach((p, idx) => {
-        const numVal = Number(p);
-        obj[`value${idx + 1}`] = Number.isNaN(numVal) ? p : numVal;
-      });
-      return obj;
+    // CSV-like values or whitespace-separated numeric series -> { value1, value2, ... }
+    if (text.includes(',') || /\s+/.test(text)) {
+      const rawParts = text.includes(',') ? text.split(',') : text.split(/\s+/);
+      const parts = rawParts.map(s => s.trim()).filter(Boolean);
+      if (parts.length > 1) {
+        const obj = {};
+        parts.forEach((p, idx) => {
+          const numVal = Number(p);
+          obj[`value${idx + 1}`] = Number.isNaN(numVal) ? p : numVal;
+        });
+        return obj;
+      }
     }
     
     return { raw: text };
@@ -102,6 +105,35 @@ class ConnectionManager {
         base[key] = Number(val);
       }
     });
+
+    // If we have positional values (value1..value6), map common sensor fields
+    const positionalKeys = Object.keys(base).filter(k => /^value\d+$/.test(k)).sort((a, b) => Number(a.replace('value', '')) - Number(b.replace('value', '')));
+    if (positionalKeys.length >= 2) {
+      const sensorOrder = ['temp', 'humid', 'press', 'co2', 'lux', 'batt'];
+      sensorOrder.forEach((name, idx) => {
+        const key = positionalKeys[idx];
+        if (key && base[key] !== undefined && base[name] === undefined) {
+          base[name] = base[key];
+        }
+      });
+    }
+
+    // If we only got a raw CSV string under 'raw', attempt to parse it into common fields
+    if (typeof base.raw === 'string' && (base.raw.includes(',') || /\s+/.test(base.raw))) {
+      const tokens = (base.raw.includes(',') ? base.raw.split(',') : base.raw.split(/\s+/)).map(s => s.trim()).filter(Boolean);
+      if (tokens.length >= 2) {
+        const nums = tokens.map(t => {
+          const n = Number(t);
+          return Number.isFinite(n) ? n : t;
+        });
+        const sensorOrder = ['temp', 'humid', 'press', 'co2', 'lux', 'batt'];
+        sensorOrder.forEach((name, idx) => {
+          if (nums[idx] !== undefined && base[name] === undefined) {
+            base[name] = nums[idx];
+          }
+        });
+      }
+    }
     
     // Prefer provided timestamps if present (ts, time, timestamp)
     const candidateTs = base.timestamp || base.ts || base.time;
@@ -110,14 +142,18 @@ class ConnectionManager {
       if (typeof candidateTs === 'number') {
         const ms = candidateTs > 1e12 ? candidateTs : candidateTs > 1e9 ? candidateTs * 1000 : candidateTs;
         tsIso = new Date(ms).toISOString();
+        // Also ensure numeric 'ts' field in milliseconds
+        if (!base.ts) base.ts = ms;
       } else if (typeof candidateTs === 'string') {
         const n = Number(candidateTs.trim());
         if (Number.isFinite(n)) {
           const ms = n > 1e12 ? n : n > 1e9 ? n * 1000 : n;
           tsIso = new Date(ms).toISOString();
+          if (!base.ts) base.ts = ms;
         } else {
           const d = new Date(candidateTs);
           tsIso = isNaN(d.getTime()) ? undefined : d.toISOString();
+          if (!base.ts) base.ts = d.getTime();
         }
       }
       if (tsIso) {
@@ -127,7 +163,9 @@ class ConnectionManager {
     
     // Always ensure timestamp exists
     if (!base.timestamp) {
-      base.timestamp = new Date().toISOString();
+      const now = new Date();
+      base.timestamp = now.toISOString();
+      if (!base.ts) base.ts = now.getTime();
     }
     
     // Add metadata fields if not present

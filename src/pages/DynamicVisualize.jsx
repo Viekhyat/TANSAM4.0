@@ -139,9 +139,12 @@ export default function DynamicVisualizePage() {
             flatData = data.data.flatMap(table => table.rows);
           }
           
-          // Extract field names from the first data item
+          // Extract field names from union across last 50 rows (limit to last 50 rows)
           if (flatData.length > 0) {
-            const fields = Object.keys(flatData[0]);
+            const tail = flatData.slice(-50);
+            const fieldSet = new Set();
+            tail.forEach(row => Object.keys(row || {}).forEach(k => fieldSet.add(k)));
+            const fields = Array.from(fieldSet);
             setDataFields(fields);
 
             // Infer numeric fields from a small sample
@@ -182,7 +185,8 @@ export default function DynamicVisualizePage() {
               });
             }
 
-            setPreviewData(flatData);
+            // Keep only the last 50 entries from the tail for preview and building
+            setPreviewData(tail);
           }
         }
         
@@ -666,7 +670,7 @@ export default function DynamicVisualizePage() {
                   <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
                     <thead>
                       <tr>
-                        {dataFields.slice(0, 5).map((field) => (
+                        {dataFields.map((field) => (
                           <th
                             key={field}
                             className="px-3 py-2 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider"
@@ -674,17 +678,12 @@ export default function DynamicVisualizePage() {
                             {field}
                           </th>
                         ))}
-                        {dataFields.length > 5 && (
-                          <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                            ...
-                          </th>
-                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                      {processedPreviewData.slice(0, 5).map((row, rowIndex) => (
+                      {previewData.slice(0, 10).map((row, rowIndex) => (
                         <tr key={rowIndex} className="hover:bg-white/10 dark:hover:bg-white/5">
-                          {dataFields.slice(0, 5).map((field) => (
+                          {dataFields.map((field) => (
                             <td
                               key={`${rowIndex}-${field}`}
                               className="max-w-[150px] overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 text-xs text-slate-700 dark:text-slate-300"
@@ -692,24 +691,24 @@ export default function DynamicVisualizePage() {
                               {row[field] !== null && row[field] !== undefined ? String(row[field]) : "null"}
                             </td>
                           ))}
-                          {dataFields.length > 5 && (
-                            <td className="px-3 py-2 text-xs text-slate-700 dark:text-slate-300">...</td>
-                          )}
                         </tr>
                       ))}
-                      {processedPreviewData.length > 5 && (
+                      {previewData.length > 10 && (
                         <tr>
-                          <td
-                            colSpan={Math.min(dataFields.length, 6)}
-                            className="px-3 py-2 text-center text-xs text-slate-500 dark:text-slate-400"
-                          >
-                            {processedPreviewData.length - 5} more rows
+                          <td colSpan={dataFields.length} className="px-3 py-2 text-center text-xs text-slate-500 dark:text-slate-400">
+                            {previewData.length - 10} more rows
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
                 </div>
+                <details className="mt-3 text-xs">
+                  <summary className="cursor-pointer text-slate-600 dark:text-slate-300">View raw JSON (first 5 rows)</summary>
+                  <pre className="mt-2 max-h-64 overflow-auto rounded bg-slate-900/70 p-3 text-slate-100">
+{JSON.stringify(previewData.slice(0, 5), null, 2)}
+                  </pre>
+                </details>
               </div>
             )}
           </GlassCard>
