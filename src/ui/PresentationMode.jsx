@@ -119,65 +119,40 @@ export default function PresentationMode() {
       return;
     }
     
-    // Store presentation data in sessionStorage for child windows to access
-    const presentationData = {
-      charts: selectedCharts,
-      assignments: screenAssignments,
-      timestamp: Date.now()
-    };
-    sessionStorage.setItem('presentationData', JSON.stringify(presentationData));
-    
-    // Try to use Screen Details API for accurate multi-screen positioning
     try {
-      if (window.getScreenDetails) {
-        const screenDetails = await window.getScreenDetails();
-        
-        // Open presentation windows on each assigned screen
-        selectedCharts.forEach((chartId, index) => {
-          const screenId = screenAssignments[chartId] ?? 0;
-          const screen = screenDetails.screens[screenId];
-          
-          if (screen) {
-            // Use screen coordinates for positioning
-            const left = Math.round(screen.availLeft || screen.left || 0);
-            const top = Math.round(screen.availTop || screen.top || 0);
-            const width = Math.round(screen.availWidth || screen.width);
-            const height = Math.round(screen.availHeight || screen.height);
-            
-            const windowFeatures = `left=${left},top=${top},width=${width},height=${height},menubar=no,toolbar=no,location=no,status=no`;
-            const presentationUrl = `/presentation-window?chartId=${encodeURIComponent(chartId)}&index=${index}&total=${selectedCharts.length}&screenId=${screenId}`;
-            window.open(presentationUrl, `presentation-${index}`, windowFeatures);
-          }
-        });
+      // Prepare presentation config for backend
+      const presentations = selectedCharts.map((chartId, index) => ({
+        url: `${window.location.origin}/presentation-window?chartId=${encodeURIComponent(chartId)}&index=${index}&total=${selectedCharts.length}`,
+        screen_id: screenAssignments[chartId] ?? 0,
+        browser: 'chrome'
+      }));
+      
+      // Call backend to launch windows on specific screens
+      const response = await fetch(`${BACKEND_URL}/api/launch-presentations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ presentations })
+      });
+      
+      const result = await response.json();
+      
+      // Consider it a success if at least one window launched
+      if (result.windows && result.windows.length > 0) {
+        console.log('✅ Presentations launched on screens:', result.windows);
+        if (result.errors && result.errors.length > 0) {
+          console.warn('⚠️ Some screens failed:', result.errors);
+          alert(`Presentations launched!\n\nNote: ${result.errors.join('\n')}`);
+        }
+        setIsPresenting(true);
       } else {
-        // Fallback for browsers without Screen Details API
-        selectedCharts.forEach((chartId, index) => {
-          const screenId = screenAssignments[chartId] ?? 0;
-          const screen = availableScreens[screenId];
-          
-          if (screen) {
-            const left = screen.left || (screenId * 1920); // Estimate position
-            const top = screen.top || 0;
-            const width = screen.width || 1920;
-            const height = screen.height || 1080;
-            
-            const windowFeatures = `left=${left},top=${top},width=${width},height=${height},menubar=no,toolbar=no,location=no,status=no`;
-            const presentationUrl = `/presentation-window?chartId=${encodeURIComponent(chartId)}&index=${index}&total=${selectedCharts.length}&screenId=${screenId}`;
-            window.open(presentationUrl, `presentation-${index}`, windowFeatures);
-          }
-        });
+        const errors = result.errors || ['Unknown error'];
+        console.error('❌ Failed to launch presentations:', errors);
+        alert(`Failed to launch presentations:\n${errors.join('\n')}`);
       }
     } catch (error) {
-      console.error("Error accessing screen details:", error);
-      // Fallback: just open windows
-      selectedCharts.forEach((chartId, index) => {
-        const screenId = screenAssignments[chartId] ?? 0;
-        const presentationUrl = `/presentation-window?chartId=${encodeURIComponent(chartId)}&index=${index}&total=${selectedCharts.length}&screenId=${screenId}`;
-        window.open(presentationUrl, `presentation-${index}`);
-      });
+      console.error('❌ Error launching presentations:', error);
+      alert('Error launching presentations. Make sure the backend is running.');
     }
-    
-    setIsPresenting(true);
   };
 
   const handleNextScreen = () => {

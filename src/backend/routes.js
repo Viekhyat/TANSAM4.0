@@ -1,6 +1,13 @@
 import express from "express";
+import { spawn } from "child_process";
+import path from "path";
+import { fileURLToPath } from "url";
 import connectionManager from "./connectionManager.js";
 import chartsStorage from "./chartsStorage.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const router = express.Router();
 
 router.post("/add-connection", async (req, res) => {
@@ -353,6 +360,130 @@ router.delete("/charts/:id", (req, res) => {
     }
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Presentation endpoints
+router.post("/launch-presentations", (req, res) => {
+  console.log('📺 POST /api/launch-presentations called');
+  try {
+    const { presentations } = req.body;
+    
+    console.log('Presentations received:', presentations);
+    
+    if (!presentations || !Array.isArray(presentations)) {
+      console.error('Invalid presentations format');
+      return res.status(400).json({ 
+        success: false, 
+        error: "presentations array is required" 
+      });
+    }
+    
+    // Build config for Python script
+    const config = {
+      presentations: presentations.map(p => ({
+        url: p.url,
+        screen_id: p.screen_id || 0,
+        browser: p.browser || 'chrome'
+      }))
+    };
+    
+    console.log('Config for Python:', JSON.stringify(config, null, 2));
+    
+    // Call Python script
+    const pythonScript = path.join(__dirname, 'presentation_manager.py');
+    console.log('Python script path:', pythonScript);
+    
+    const python = spawn('python3', [pythonScript, JSON.stringify(config)]);
+    
+    let output = '';
+    let error = '';
+    
+    python.stdout.on('data', (data) => {
+      output += data.toString();
+      console.log('Python stdout:', data.toString());
+    });
+    
+    python.stderr.on('data', (data) => {
+      error += data.toString();
+      console.error('Python stderr:', data.toString());
+    });
+    
+    python.on('close', (code) => {
+      console.log('Python process closed with code:', code);
+      try {
+        if (code !== 0) {
+          console.error('Python script error:', error);
+          return res.status(500).json({ 
+            success: false, 
+            error: `Python script failed: ${error}` 
+          });
+        }
+        
+        const result = JSON.parse(output);
+        console.log('✅ Presentations launched successfully:', result);
+        res.json(result);
+      } catch (parseError) {
+        console.error('Failed to parse Python output:', output, parseError);
+        res.status(500).json({ 
+          success: false, 
+          error: 'Failed to parse presentation manager response',
+          output: output
+        });
+      }
+    });
+    
+  } catch (err) {
+    console.error('Error launching presentations:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get available screens
+router.get("/screens", (req, res) => {
+  try {
+    const pythonScript = path.join(__dirname, 'presentation_manager.py');
+    const python = spawn('python3', [pythonScript]);
+    
+    let output = '';
+    let error = '';
+    
+    python.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    
+    python.stderr.on('data', (data) => {
+      error += data.toString();
+    });
+    
+    python.on('close', (code) => {
+      try {
+        if (code !== 0) {
+          console.error('Python script error:', error);
+          return res.status(500).json({ 
+            success: false, 
+            error: `Failed to detect screens: ${error}` 
+          });
+        }
+        
+        const result = JSON.parse(output);
+        res.json({ 
+          success: true, 
+          screens: result.screens,
+          system: result.system
+        });
+      } catch (parseError) {
+        console.error('Failed to parse screen detection output:', output, parseError);
+        res.status(500).json({ 
+          success: false, 
+          error: 'Failed to detect screens' 
+        });
+      }
+    });
+    
+  } catch (err) {
+    console.error('Error detecting screens:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
