@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useStore } from "../providers/StoreContext.jsx";
 import ChartRenderer from "./ChartRenderer.jsx";

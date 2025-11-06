@@ -83,6 +83,96 @@ class ScreenManager:
     def _detect_screens_windows(self) -> List[Dict]:
         """Detect screens on Windows"""
         try:
+            # Try using PowerShell to get monitor info
+            powershell_script = """
+            Add-Type @"
+                using System;
+                using System.Runtime.InteropServices;
+                public class Display {
+                    [DllImport("user32.dll")]
+                    public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+                    
+                    [DllImport("user32.dll")]
+                    public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+                    
+                    public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+                    
+                    [StructLayout(LayoutKind.Sequential)]
+                    public struct RECT {
+                        public int Left;
+                        public int Top;
+                        public int Right;
+                        public int Bottom;
+                    }
+                    
+                    [StructLayout(LayoutKind.Sequential)]
+                    public struct MONITORINFO {
+                        public uint Size;
+                        public RECT Monitor;
+                        public RECT WorkArea;
+                        public uint Flags;
+                    }
+                }
+"@
+
+            $monitors = @()
+            $callback = {
+                param($hMonitor, $hdcMonitor, $lprcMonitor, $dwData)
+                $info = New-Object Display+MONITORINFO
+                $info.Size = [System.Runtime.InteropServices.Marshal]::SizeOf($info)
+                [Display]::GetMonitorInfo($hMonitor, [ref]$info)
+                
+                $monitors += [PSCustomObject]@{
+                    X = $info.Monitor.Left
+                    Y = $info.Monitor.Top
+                    Width = $info.Monitor.Right - $info.Monitor.Left
+                    Height = $info.Monitor.Bottom - $info.Monitor.Top
+                    Primary = ($info.Flags -eq 1)
+                }
+                return $true
+            }
+
+            [Display]::EnumDisplayMonitors([IntPtr]::Zero, [IntPtr]::Zero, $callback, [IntPtr]::Zero)
+            $monitors | ConvertTo-Json
+            """
+            
+            result = subprocess.run(['powershell', '-Command', powershell_script], 
+                                  capture_output=True, text=True, timeout=5)
+            
+            if result.returncode == 0 and result.stdout:
+                import json
+                monitors_data = json.loads(result.stdout)
+                
+                screens = []
+                if isinstance(monitors_data, list):
+                    for i, mon in enumerate(monitors_data):
+                        screens.append({
+                            'id': i,
+                            'x': mon['X'],
+                            'y': mon['Y'],
+                            'width': mon['Width'],
+                            'height': mon['Height'],
+                            'primary': mon.get('Primary', False)
+                        })
+                elif isinstance(monitors_data, dict):
+                    screens.append({
+                        'id': 0,
+                        'x': monitors_data['X'],
+                        'y': monitors_data['Y'],
+                        'width': monitors_data['Width'],
+                        'height': monitors_data['Height'],
+                        'primary': monitors_data.get('Primary', True)
+                    })
+                
+                return screens if screens else self._detect_screens_windows_fallback()
+        except Exception as e:
+            print(f"Error detecting Windows screens with PowerShell: {e}")
+        
+        return self._detect_screens_windows_fallback()
+    
+    def _detect_screens_windows_fallback(self) -> List[Dict]:
+        """Fallback method for Windows screen detection using tkinter"""
+        try:
             import tkinter as tk
             root = tk.Tk()
             root.update_idletasks()
@@ -169,34 +259,57 @@ class ScreenManager:
         """Launch browser on Linux"""
         browser_cmd = self._get_browser_command(browser)
         
-        # Launch window with position and size
+        # Launch window without position flags - we'll position it with wmctrl
         cmd = [
             browser_cmd,
             f"--new-window",
-            f"--window-position={screen['x']},{screen['y']}",
-            f"--window-size={screen['width']},{screen['height']}",
             url
         ]
         
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(1.5)  # Give window time to open
+        time.sleep(2.0)  # Give window time to fully open
         
-        # Try to maximize window on the target screen using wmctrl
+        # Try to move and maximize window on the target screen using wmctrl
         try:
-            # First, move the window to exact position
+            # First, unmaximize to allow positioning
+            subprocess.run([
+                'wmctrl', '-r', ':ACTIVE:',
+                '-b', 'remove,maximized_vert,maximized_horz'
+            ], timeout=2, capture_output=True)
+            
+            time.sleep(0.3)
+            
+            # Move window to the target screen
             subprocess.run([
                 'wmctrl', '-r', ':ACTIVE:',
                 '-e', f'0,{screen["x"]},{screen["y"]},{screen["width"]},{screen["height"]}'
-            ], timeout=2)
+            ], timeout=2, capture_output=True)
             
-            # Then maximize it
             time.sleep(0.3)
+            
+            # Now maximize it
             subprocess.run([
                 'wmctrl', '-r', ':ACTIVE:',
                 '-b', 'add,maximized_vert,maximized_horz'
-            ], timeout=2)
+            ], timeout=2, capture_output=True)
+            
         except Exception as e:
             print(f"wmctrl positioning attempt: {e}", file=sys.stderr)
+            # Try alternative xdotool method
+            try:
+                result = subprocess.run(['xdotool', 'getactivewindow'], 
+                                      capture_output=True, text=True, timeout=2)
+                window_id = result.stdout.strip()
+                
+                if window_id:
+                    subprocess.run(['xdotool', 'windowmove', window_id, 
+                                  str(screen['x']), str(screen['y'])], 
+                                 timeout=2, capture_output=True)
+                    subprocess.run(['xdotool', 'windowsize', window_id, 
+                                  str(screen['width']), str(screen['height'])], 
+                                 timeout=2, capture_output=True)
+            except Exception as e2:
+                print(f"xdotool positioning error: {e2}", file=sys.stderr)
         
         return process.pid
     
@@ -217,42 +330,112 @@ class ScreenManager:
         """Launch browser on Windows"""
         browser_cmd = self._get_browser_command(browser)
         
+        # Launch window
         cmd = [
             browser_cmd,
             f"--new-window",
-            f"--window-position={screen['x']},{screen['y']}",
-            f"--window-size={screen['width']},{screen['height']}",
-            f"--start-fullscreen",
             url
         ]
         
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(2.0)  # Give window time to open
+        
+        # Use PowerShell to position the window
+        try:
+            powershell_script = f"""
+            Add-Type @"
+                using System;
+                using System.Runtime.InteropServices;
+                public class Win32 {{
+                    [DllImport("user32.dll")]
+                    public static extern IntPtr GetForegroundWindow();
+                    [DllImport("user32.dll")]
+                    public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+                    [DllImport("user32.dll")]
+                    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+                }}
+"@
+            $hwnd = [Win32]::GetForegroundWindow()
+            [Win32]::ShowWindow($hwnd, 1)
+            Start-Sleep -Milliseconds 200
+            [Win32]::MoveWindow($hwnd, {screen['x']}, {screen['y']}, {screen['width']}, {screen['height']}, $true)
+            Start-Sleep -Milliseconds 200
+            [Win32]::ShowWindow($hwnd, 3)
+            """
+            
+            subprocess.run(['powershell', '-Command', powershell_script], 
+                         timeout=5, capture_output=True)
+        except Exception as e:
+            print(f"Windows positioning error: {e}", file=sys.stderr)
+        
         return process.pid
     
     def _launch_linux_at_position(self, url: str, x: int, y: int, width: int, height: int, browser: str) -> Optional[int]:
         """Launch browser on Linux at specific position"""
         browser_cmd = self._get_browser_command(browser)
         
+        # Launch without position flags - we'll position it with wmctrl
         cmd = [
             browser_cmd,
             f"--new-window",
-            f"--window-position={x},{y}",
-            f"--window-size={width},{height}",
             url
         ]
         
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(1.0)
         
-        # Try to position window using wmctrl
+        # Wait for window to appear
+        time.sleep(2.0)
+        
+        # Get the window ID of the newly created window
         try:
+            # First, remove any maximization
             subprocess.run([
                 'wmctrl', '-r', ':ACTIVE:',
-                '-b', 'remove,maximized_vert,maximized_horz',
+                '-b', 'remove,maximized_vert,maximized_horz'
+            ], timeout=2, capture_output=True)
+            
+            time.sleep(0.3)
+            
+            # Now position and resize the window
+            # Format: gravity,x,y,width,height (gravity 0 = use x,y as-is)
+            subprocess.run([
+                'wmctrl', '-r', ':ACTIVE:',
                 '-e', f'0,{x},{y},{width},{height}'
-            ], timeout=2)
+            ], timeout=2, capture_output=True)
+            
+            time.sleep(0.2)
+            
+            # Remove decorations for cleaner look (optional)
+            subprocess.run([
+                'wmctrl', '-r', ':ACTIVE:',
+                '-b', 'add,above'
+            ], timeout=2, capture_output=True)
+            
         except Exception as e:
-            print(f"wmctrl positioning attempt: {e}", file=sys.stderr)
+            print(f"wmctrl positioning error: {e}", file=sys.stderr)
+            # Try alternative method using xdotool if available
+            try:
+                # Get active window ID
+                result = subprocess.run(['xdotool', 'getactivewindow'], 
+                                      capture_output=True, text=True, timeout=2)
+                window_id = result.stdout.strip()
+                
+                if window_id:
+                    # Unmaximize
+                    subprocess.run(['xdotool', 'windowstate', '--remove', 'MAXIMIZED_VERT', window_id], 
+                                 timeout=2, capture_output=True)
+                    subprocess.run(['xdotool', 'windowstate', '--remove', 'MAXIMIZED_HORZ', window_id], 
+                                 timeout=2, capture_output=True)
+                    
+                    time.sleep(0.2)
+                    
+                    # Move and resize
+                    subprocess.run(['xdotool', 'windowmove', window_id, str(x), str(y)], 
+                                 timeout=2, capture_output=True)
+                    subprocess.run(['xdotool', 'windowsize', window_id, str(width), str(height)], 
+                                 timeout=2, capture_output=True)
+            except Exception as e2:
+                print(f"xdotool positioning error: {e2}", file=sys.stderr)
         
         return process.pid
     
@@ -260,15 +443,42 @@ class ScreenManager:
         """Launch browser on Windows at specific position"""
         browser_cmd = self._get_browser_command(browser)
         
+        # Launch window
         cmd = [
             browser_cmd,
             f"--new-window",
-            f"--window-position={x},{y}",
-            f"--window-size={width},{height}",
             url
         ]
         
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(2.0)  # Give window time to open
+        
+        # Use PowerShell to position the window
+        try:
+            powershell_script = f"""
+            Add-Type @"
+                using System;
+                using System.Runtime.InteropServices;
+                public class Win32 {{
+                    [DllImport("user32.dll")]
+                    public static extern IntPtr GetForegroundWindow();
+                    [DllImport("user32.dll")]
+                    public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+                    [DllImport("user32.dll")]
+                    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+                }}
+"@
+            $hwnd = [Win32]::GetForegroundWindow()
+            [Win32]::ShowWindow($hwnd, 1)
+            Start-Sleep -Milliseconds 200
+            [Win32]::MoveWindow($hwnd, {x}, {y}, {width}, {height}, $true)
+            """
+            
+            subprocess.run(['powershell', '-Command', powershell_script], 
+                         timeout=5, capture_output=True)
+        except Exception as e:
+            print(f"Windows positioning error: {e}", file=sys.stderr)
+        
         return process.pid
     
     def _get_browser_command(self, browser: str) -> str:
