@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useStore } from "../providers/StoreContext.jsx";
 import ChartRenderer from "./ChartRenderer.jsx";
@@ -18,6 +19,10 @@ export default function PresentationMode() {
   const [screenAssignments, setScreenAssignments] = useState({});
   const [availableScreens, setAvailableScreens] = useState([]);
   const [showScreenConfig, setShowScreenConfig] = useState(false);
+  const [multiWindow, setMultiWindow] = useState(false);
+  const [showLayoutConfig, setShowLayoutConfig] = useState(false);
+  const [layoutColumns, setLayoutColumns] = useState(2);
+  const [selectedDisplayId, setSelectedDisplayId] = useState(0);
   const abortControllerRef = useRef(null);
 
   const allCharts = useMemo(() => {
@@ -82,6 +87,14 @@ export default function PresentationMode() {
     });
   };
 
+  const handleSelectAll = () => {
+    setSelectedCharts(allCharts.map(c => `${c.source}-${c.id}`));
+  };
+
+  const handleClearSelection = () => {
+    setSelectedCharts([]);
+  };
+
   const detectScreens = useCallback(() => {
     if (window.getScreenDetails) {
       window.getScreenDetails().then(details => {
@@ -105,18 +118,71 @@ export default function PresentationMode() {
     detectScreens();
   }, [detectScreens]);
 
+  // Auto-start kiosk presentation if query param present and session data exists
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('kiosk') === '1') {
+      try {
+        const raw = sessionStorage.getItem('presentationSingleTab');
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (Array.isArray(saved.charts) && saved.charts.length > 0) {
+            setSelectedCharts(saved.charts);
+            if (saved.columns) setLayoutColumns(saved.columns);
+            setIsPresenting(true);
+          }
+        }
+      } catch (_) {}
+    }
+  }, []);
+
   const handleConfigureScreens = () => {
     if (selectedCharts.length === 0) {
       alert("Please select at least one chart to present");
       return;
     }
-    setShowScreenConfig(true);
+    if (multiWindow) {
+      setShowScreenConfig(true);
+    } else {
+      setShowLayoutConfig(true);
+    }
   };
 
   const handleStartPresentation = async () => {
     if (selectedCharts.length === 0) {
       alert("Please select at least one chart to present");
       return;
+    }
+    
+    // Single-tab slideshow mode
+    if (!multiWindow) {
+      // Require layout configuration before presenting
+      setShowLayoutConfig(true);
+      return;
+    }
+    
+    // Preflight: request Window Management / Screen Details permission so we can target displays
+    try {
+      if (window.getScreenDetails) {
+        // If permission API exists, surface state to user if denied
+        if (navigator.permissions && navigator.permissions.query) {
+          try {
+            const p = await navigator.permissions.query({ name: 'window-management' });
+            if (p.state === 'denied') {
+              alert("Please allow 'Manage windows and tabs' (Window Management) permission for this site in your browser settings to present on selected displays. Then click Start Presentation again.");
+              return;
+            }
+          } catch (_) {
+            // Ignore; not all browsers implement this permission query
+          }
+        }
+        // This call may prompt the user; if they deny, we catch below
+        await window.getScreenDetails();
+      }
+    } catch (e) {
+      // User denied or API unavailable
+      console.warn('Screen Details permission not granted or unavailable:', e);
+      // Continue; child windows will still open on primary screen as fallback
     }
     
     // Store presentation data in sessionStorage for child windows to access
@@ -126,55 +192,55 @@ export default function PresentationMode() {
       timestamp: Date.now()
     };
     sessionStorage.setItem('presentationData', JSON.stringify(presentationData));
-    
-    // Try to use Screen Details API for accurate multi-screen positioning
+
+    // IMPORTANT: Open windows synchronously (popup blockers require user gesture)
+    const openedWindows = [];
+    selectedCharts.forEach((chartId, index) => {
+      const screenId = screenAssignments[chartId] ?? 0;
+      const presentationUrl = `/presentation-window?chartId=${encodeURIComponent(chartId)}&index=${index}&total=${selectedCharts.length}&screenId=${screenId}`;
+      const baseFeatures = "popup=yes,noopener,noreferrer,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes";
+      const winRef = window.open(presentationUrl, `presentation-${index}`, baseFeatures);
+      openedWindows.push({ winRef, chartId, index, screenId });
+    });
+
+    // Try to use Screen Details API for accurate multi-screen positioning AFTER windows are opened
     try {
-      if (window.getScreenDetails) {
-        const screenDetails = await window.getScreenDetails();
-        
-        // Open presentation windows on each assigned screen
-        selectedCharts.forEach((chartId, index) => {
-          const screenId = screenAssignments[chartId] ?? 0;
+      const screenDetails = window.getScreenDetails ? await window.getScreenDetails() : null;
+
+      openedWindows.forEach(({ winRef, chartId, index, screenId }) => {
+        if (!winRef || winRef.closed) return;
+
+        let left = 0;
+        let top = 0;
+        let width = window.screen.availWidth;
+        let height = window.screen.availHeight;
+
+        if (screenDetails && screenDetails.screens && screenDetails.screens[screenId]) {
           const screen = screenDetails.screens[screenId];
-          
-          if (screen) {
-            // Use screen coordinates for positioning
-            const left = Math.round(screen.availLeft || screen.left || 0);
-            const top = Math.round(screen.availTop || screen.top || 0);
-            const width = Math.round(screen.availWidth || screen.width);
-            const height = Math.round(screen.availHeight || screen.height);
-            
-            const windowFeatures = `left=${left},top=${top},width=${width},height=${height},menubar=no,toolbar=no,location=no,status=no`;
-            const presentationUrl = `/presentation-window?chartId=${encodeURIComponent(chartId)}&index=${index}&total=${selectedCharts.length}&screenId=${screenId}`;
-            window.open(presentationUrl, `presentation-${index}`, windowFeatures);
-          }
-        });
-      } else {
-        // Fallback for browsers without Screen Details API
-        selectedCharts.forEach((chartId, index) => {
-          const screenId = screenAssignments[chartId] ?? 0;
-          const screen = availableScreens[screenId];
-          
-          if (screen) {
-            const left = screen.left || (screenId * 1920); // Estimate position
-            const top = screen.top || 0;
-            const width = screen.width || 1920;
-            const height = screen.height || 1080;
-            
-            const windowFeatures = `left=${left},top=${top},width=${width},height=${height},menubar=no,toolbar=no,location=no,status=no`;
-            const presentationUrl = `/presentation-window?chartId=${encodeURIComponent(chartId)}&index=${index}&total=${selectedCharts.length}&screenId=${screenId}`;
-            window.open(presentationUrl, `presentation-${index}`, windowFeatures);
-          }
-        });
-      }
+          left = Math.round((screen.availLeft ?? screen.left ?? 0));
+          top = Math.round((screen.availTop ?? screen.top ?? 0));
+          width = Math.round((screen.availWidth ?? screen.width ?? width));
+          height = Math.round((screen.availHeight ?? screen.height ?? height));
+        } else if (availableScreens && availableScreens[screenId]) {
+          const fallback = availableScreens[screenId];
+          left = Math.round(fallback.left ?? (screenId * (fallback.width || 1920)));
+          top = Math.round(fallback.top ?? 0);
+          width = Math.round(fallback.width || 1920);
+          height = Math.round(fallback.height || 1080);
+        }
+
+        try {
+          winRef.moveTo(left, top);
+          winRef.resizeTo(width, height);
+          winRef.focus();
+        } catch (e) {
+          // Some browsers may restrict programmatic moving/resizing
+          // We already opened windows; worst case they remain on primary screen
+        }
+      });
     } catch (error) {
       console.error("Error accessing screen details:", error);
-      // Fallback: just open windows
-      selectedCharts.forEach((chartId, index) => {
-        const screenId = screenAssignments[chartId] ?? 0;
-        const presentationUrl = `/presentation-window?chartId=${encodeURIComponent(chartId)}&index=${index}&total=${selectedCharts.length}&screenId=${screenId}`;
-        window.open(presentationUrl, `presentation-${index}`);
-      });
+      // We already opened windows synchronously; nothing else to do here
     }
     
     setIsPresenting(true);
@@ -232,6 +298,9 @@ export default function PresentationMode() {
   }, [handleKeyDown]);
 
   if (isPresenting) {
+    if (!multiWindow) {
+      return <PresentationCanvas selectedCharts={selectedCharts} columns={layoutColumns} onExit={handleExitPresentation} />;
+    }
     return <PresentationScreen chartId={selectedCharts[currentScreenIndex]} onExit={handleExitPresentation} onNext={handleNextScreen} onPrev={handlePreviousScreen} currentIndex={currentScreenIndex} totalCharts={selectedCharts.length} />;
   }
 
@@ -268,6 +337,48 @@ export default function PresentationMode() {
         />
       )}
 
+      {showLayoutConfig && (
+        <PresentationLayoutModal
+          availableScreens={availableScreens}
+          selectedDisplayId={selectedDisplayId}
+          setSelectedDisplayId={setSelectedDisplayId}
+          onClose={() => setShowLayoutConfig(false)}
+          onStart={async () => {
+            setShowLayoutConfig(false);
+            // Persist single-tab presentation state for kiosk window
+            try {
+              sessionStorage.setItem('presentationSingleTab', JSON.stringify({ charts: selectedCharts, columns: layoutColumns }));
+            } catch (_) {}
+            // Fire backend to open kiosk window on selected display
+            try {
+              const presentUrl = `${window.location.origin}/presentation?kiosk=1`;
+              await fetch(`${BACKEND_URL}/api/present`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: presentUrl, monitorIndex: selectedDisplayId })
+              });
+            } catch (e) {
+              console.warn('Failed to trigger external presenter:', e);
+            }
+            setIsPresenting(true);
+            try {
+              const elem = document.documentElement;
+              if (elem.requestFullscreen) {
+                await elem.requestFullscreen();
+              } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen();
+              } else if (elem.mozRequestFullScreen) {
+                elem.mozRequestFullScreen();
+              } else if (elem.msRequestFullscreen) {
+                elem.msRequestFullscreen();
+              }
+            } catch (_) {}
+          }}
+          columns={layoutColumns}
+          setColumns={setLayoutColumns}
+        />
+      )}
+
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Available Charts</h2>
@@ -275,12 +386,26 @@ export default function PresentationMode() {
             <div className="text-sm text-slate-500 dark:text-slate-300">
               {selectedCharts.length} selected
             </div>
-            {selectedCharts.length > 0 && availableScreens.length > 1 && (
+            <button
+              onClick={handleSelectAll}
+              className="rounded-full border border-slate-300 dark:border-slate-600 px-3 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            >
+              Select All
+            </button>
+            {selectedCharts.length > 0 && (
+              <button
+                onClick={handleClearSelection}
+                className="rounded-full border border-slate-300 dark:border-slate-600 px-3 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                Clear
+              </button>
+            )}
+            {selectedCharts.length > 0 && (
               <button
                 onClick={handleConfigureScreens}
                 className="rounded-full bg-purple-500 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-purple-600"
               >
-                🖥️ Configure Screens
+                ⚙️ Configure Presentation
               </button>
             )}
           </div>
@@ -382,6 +507,95 @@ function ChartSelectionCard({ chart, isSelected, onToggle }) {
         </div>
       </div>
     </GlassCard>
+  );
+}
+
+function PresentationCanvas({ selectedCharts, columns, onExit }) {
+  const { charts: staticCharts, datasets } = useStore();
+  const [dynamicCharts, setDynamicCharts] = useState([]);
+  const [dynamicConnections, setDynamicConnections] = useState([]);
+  const abortControllerRef = useRef(null);
+
+  useEffect(() => {
+    const fetchDynamicCharts = async () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
+      try {
+        const [connectionsResponse, chartsResponse] = await Promise.all([
+          fetch(`${BACKEND_URL}/api/connections`, { signal }),
+          fetch(`${BACKEND_URL}/api/charts`, { signal })
+        ]);
+        const connectionsData = await connectionsResponse.json();
+        const chartsData = await chartsResponse.json();
+        const nextConnections = connectionsData?.success ? connectionsData.connections || [] : [];
+        const nextCharts = chartsData?.success ? chartsData.charts || [] : [];
+        setDynamicConnections(nextConnections);
+        setDynamicCharts(nextCharts);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('Error fetching dynamic charts:', error);
+        }
+      }
+    };
+    fetchDynamicCharts();
+  }, []);
+
+  const gridStyle = useMemo(() => ({
+    gridTemplateColumns: `repeat(${Math.max(1, Math.min(6, columns))}, minmax(0, 1fr))`
+  }), [columns]);
+
+  const parseId = useCallback((chartId) => {
+    const parts = chartId.split('-');
+    return { source: parts[0], id: parts.slice(1).join('-') };
+  }, []);
+
+  const resolveChart = useCallback((chartId) => {
+    const { source, id } = parseId(chartId);
+    if (source === 'static') return { source, chart: staticCharts[id] };
+    const found = dynamicCharts.find(c => c.id === id);
+    return { source, chart: found };
+  }, [parseId, staticCharts, dynamicCharts]);
+
+  const buildStaticData = useCallback((chart) => {
+    const dataset = datasets[chart.datasetId];
+    const rows = dataset?.data || dataset?.rowsPreview || [];
+    return buildChartData(rows, chart.chartType, chart.mappings, chart.options || {});
+  }, [datasets]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-black">
+      <div className="flex-1 overflow-auto p-6">
+        <div className="grid gap-6" style={gridStyle}>
+          {selectedCharts.map((cid) => {
+            const { source, chart } = resolveChart(cid);
+            if (!chart) {
+              return (
+                <div key={cid} className="bg-slate-900 rounded-lg p-4 text-center text-slate-300">Chart not found</div>
+              );
+            }
+            return (
+              <div key={cid} className="bg-slate-900 rounded-lg p-4 min-h-[240px] flex flex-col">
+                <div className="text-white text-sm font-semibold mb-3">{chart.title}</div>
+                <div className="flex-1 rounded-md overflow-hidden">
+                  {source === 'static' ? (
+                    <ChartRenderer chart={chart} data={buildStaticData(chart)} skipValidation />
+                  ) : (
+                    <ChartWithRealTimeData chart={chart} />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="bg-slate-950 border-t border-slate-800 px-6 py-4 flex items-center justify-between">
+        <div className="text-slate-400 text-xs">ESC to exit fullscreen</div>
+        <button onClick={onExit} className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 transition">Exit</button>
+      </div>
+    </div>
   );
 }
 
@@ -657,6 +871,60 @@ function ScreenConfigurationModal({ selectedCharts, availableScreens, screenAssi
             </button>
             <button
               onClick={handleStartWithAssignments}
+              className="rounded-full bg-brand-500 px-6 py-2 text-sm font-semibold text-white hover:bg-brand-600 transition"
+            >
+              Start Presentation
+            </button>
+          </div>
+        </div>
+      </GlassCard>
+    </div>
+  );
+}
+
+function PresentationLayoutModal({ onClose, onStart, columns, setColumns, availableScreens, selectedDisplayId, setSelectedDisplayId }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <GlassCard className="w-full max-w-md shadow-2xl">
+        <div className="p-6">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-4">Configure Presentation Layout</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Target Display</label>
+              <select
+                value={selectedDisplayId ?? ''}
+                onChange={(e) => setSelectedDisplayId(e.target.value ? parseInt(e.target.value) : 0)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 text-sm font-medium"
+              >
+                {availableScreens.map(screen => (
+                  <option key={screen.id} value={screen.id}>
+                    {screen.label} ({screen.width}x{screen.height}){screen.isPrimary ? ' • Primary' : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Move the browser to this display before starting, then it will go fullscreen there.</p>
+            </div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Columns</label>
+            <input
+              type="range"
+              min={1}
+              max={6}
+              value={columns}
+              onChange={(e) => setColumns(parseInt(e.target.value))}
+              className="w-full"
+            />
+            <div className="text-xs text-slate-500 dark:text-slate-300">{columns} column{columns !== 1 ? 's' : ''}</div>
+          </div>
+
+          <div className="flex gap-3 mt-6 justify-end">
+            <button
+              onClick={onClose}
+              className="rounded-full border border-slate-300 dark:border-slate-600 px-6 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onStart}
               className="rounded-full bg-brand-500 px-6 py-2 text-sm font-semibold text-white hover:bg-brand-600 transition"
             >
               Start Presentation

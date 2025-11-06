@@ -12,6 +12,7 @@ export default function PresentationWindow() {
   const [chart, setChart] = useState(null);
   const [chartData, setChartData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement || !!document.webkitFullscreenElement || !!document.mozFullScreenElement || !!document.msFullscreenElement);
   const abortControllerRef = useRef(null);
 
   // Get URL parameters
@@ -20,7 +21,11 @@ export default function PresentationWindow() {
     return {
       chartId: searchParams.get("chartId"),
       index: parseInt(searchParams.get("index") || "0"),
-      total: parseInt(searchParams.get("total") || "1")
+      total: parseInt(searchParams.get("total") || "1"),
+      screenId: (() => {
+        const v = searchParams.get("screenId");
+        return v !== null ? parseInt(v) : undefined;
+      })()
     };
   }, []);
 
@@ -74,29 +79,102 @@ export default function PresentationWindow() {
     }
   }, [source, id, staticCharts, datasets]);
 
-  // Request fullscreen on load
+  // Position this window onto the selected display and go fullscreen
   useEffect(() => {
-    const requestFullscreen = async () => {
+    let cancelled = false;
+
+    const positionAndFullscreen = async () => {
       try {
+        // Try to get screen details (may prompt for permission)
+        const details = window.getScreenDetails ? await window.getScreenDetails() : null;
+
+        if (!cancelled && details && Number.isInteger(params.screenId) && details.screens[params.screenId]) {
+          const screen = details.screens[params.screenId];
+          const left = Math.round((screen.availLeft ?? screen.left ?? 0));
+          const top = Math.round((screen.availTop ?? screen.top ?? 0));
+          const width = Math.round((screen.availWidth ?? screen.width ?? window.screen.availWidth));
+          const height = Math.round((screen.availHeight ?? screen.height ?? window.screen.availHeight));
+          try {
+            window.moveTo(left, top);
+            window.resizeTo(width, height);
+            window.focus();
+          } catch {}
+        }
+
+        // Best effort: request fullscreen after positioning
         const elem = document.documentElement;
-        if (elem.requestFullscreen) {
-          await elem.requestFullscreen();
-        } else if (elem.webkitRequestFullscreen) {
-          elem.webkitRequestFullscreen();
-        } else if (elem.mozRequestFullScreen) {
-          elem.mozRequestFullScreen();
-        } else if (elem.msRequestFullscreen) {
-          elem.msRequestFullscreen();
+        try {
+          if (elem.requestFullscreen) {
+            await elem.requestFullscreen();
+          } else if (elem.webkitRequestFullscreen) {
+            elem.webkitRequestFullscreen();
+          } else if (elem.mozRequestFullScreen) {
+            elem.mozRequestFullScreen();
+          } else if (elem.msRequestFullscreen) {
+            elem.msRequestFullscreen();
+          }
+        } catch (e) {
+          // Ignore if denied; content will still render
         }
       } catch (error) {
-        console.log("Fullscreen request failed:", error);
+        // Ignore positioning errors; window remains on primary
       }
     };
 
-    // Small delay to ensure window is ready
-    const timer = setTimeout(requestFullscreen, 500);
-    return () => clearTimeout(timer);
+    // Small delay to ensure the new window is fully initialized before moving
+    const timer = setTimeout(positionAndFullscreen, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [params.screenId]);
+
+  // Track fullscreen changes to show manual trigger overlay when needed
+  useEffect(() => {
+    const updateFs = () => {
+      setIsFullscreen(!!document.fullscreenElement || !!document.webkitFullscreenElement || !!document.mozFullScreenElement || !!document.msFullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', updateFs);
+    document.addEventListener('webkitfullscreenchange', updateFs);
+    document.addEventListener('mozfullscreenchange', updateFs);
+    document.addEventListener('MSFullscreenChange', updateFs);
+    return () => {
+      document.removeEventListener('fullscreenchange', updateFs);
+      document.removeEventListener('webkitfullscreenchange', updateFs);
+      document.removeEventListener('mozfullscreenchange', updateFs);
+      document.removeEventListener('MSFullscreenChange', updateFs);
+    };
   }, []);
+
+  const handleManualFullscreen = async () => {
+    try {
+      // Reposition once more before requesting fullscreen
+      if (window.getScreenDetails && Number.isInteger(params.screenId)) {
+        try {
+          const details = await window.getScreenDetails();
+          const scr = details.screens[params.screenId];
+          if (scr) {
+            const left = Math.round((scr.availLeft ?? scr.left ?? 0));
+            const top = Math.round((scr.availTop ?? scr.top ?? 0));
+            const width = Math.round((scr.availWidth ?? scr.width ?? window.screen.availWidth));
+            const height = Math.round((scr.availHeight ?? scr.height ?? window.screen.availHeight));
+            try { window.moveTo(left, top); window.resizeTo(width, height); } catch {}
+          }
+        } catch {}
+      }
+
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) {
+        await elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.mozRequestFullScreen) {
+        elem.mozRequestFullScreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
+    } catch {}
+  };
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -139,6 +217,20 @@ export default function PresentationWindow() {
 
   return (
     <div className="fixed inset-0 flex flex-col bg-black">
+      {!isFullscreen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="text-center text-white space-y-4">
+            <div className="text-lg font-semibold">This display needs permission to go fullscreen</div>
+            <button
+              onClick={handleManualFullscreen}
+              className="rounded-full bg-brand-500 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-600 transition shadow-lg"
+            >
+              Go Fullscreen on this Display
+            </button>
+            <div className="text-xs text-slate-300">If it doesn’t cover the projector, drag this window to the projector and click again.</div>
+          </div>
+        </div>
+      )}
       {/* Main Content */}
       <div className="flex-1 flex items-center justify-center p-8 overflow-hidden">
         <div className="w-full h-full flex flex-col">
