@@ -169,27 +169,34 @@ class ScreenManager:
         """Launch browser on Linux"""
         browser_cmd = self._get_browser_command(browser)
         
-        # Use wmctrl to position window if available
+        # Launch window with position and size
         cmd = [
             browser_cmd,
             f"--new-window",
             f"--window-position={screen['x']},{screen['y']}",
             f"--window-size={screen['width']},{screen['height']}",
-            f"--start-fullscreen",
             url
         ]
         
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(1)  # Give window time to open
+        time.sleep(1.5)  # Give window time to open
         
-        # Try to move window using wmctrl
+        # Try to maximize window on the target screen using wmctrl
         try:
+            # First, move the window to exact position
+            subprocess.run([
+                'wmctrl', '-r', ':ACTIVE:',
+                '-e', f'0,{screen["x"]},{screen["y"]},{screen["width"]},{screen["height"]}'
+            ], timeout=2)
+            
+            # Then maximize it
+            time.sleep(0.3)
             subprocess.run([
                 'wmctrl', '-r', ':ACTIVE:',
                 '-b', 'add,maximized_vert,maximized_horz'
             ], timeout=2)
-        except:
-            pass
+        except Exception as e:
+            print(f"wmctrl positioning attempt: {e}", file=sys.stderr)
         
         return process.pid
     
@@ -235,17 +242,17 @@ class ScreenManager:
         ]
         
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(0.5)
+        time.sleep(1.0)
         
         # Try to position window using wmctrl
         try:
             subprocess.run([
                 'wmctrl', '-r', ':ACTIVE:',
-                '-b', '-maximized_vert,-maximized_horz',
+                '-b', 'remove,maximized_vert,maximized_horz',
                 '-e', f'0,{x},{y},{width},{height}'
             ], timeout=2)
-        except:
-            pass
+        except Exception as e:
+            print(f"wmctrl positioning attempt: {e}", file=sys.stderr)
         
         return process.pid
     
@@ -302,7 +309,7 @@ def launch_presentations(config: Dict) -> Dict:
             'presentations': [
                 {
                     'url': 'http://localhost:5173/presentation-window?...',
-                    'screen_id': 0,
+                    'screen_id': 0,  # Optional, will auto-distribute if not specified
                     'browser': 'chrome'
                 },
                 ...
@@ -316,6 +323,8 @@ def launch_presentations(config: Dict) -> Dict:
             'errors': [str, ...]
         }
     """
+    import random
+    
     manager = ScreenManager()
     result = {
         'success': True,
@@ -326,14 +335,16 @@ def launch_presentations(config: Dict) -> Dict:
     
     presentations = config.get('presentations', [])
     num_presentations = len(presentations)
+    num_screens = len(manager.screens)
     
-    # If we have more presentations than screens, split the primary screen
-    if num_presentations > len(manager.screens):
-        primary_screen = manager.screens[0]
-        screen_width = primary_screen['width']
-        screen_height = primary_screen['height']
-        window_width = screen_width // num_presentations
-        
+    if num_presentations == 0:
+        result['errors'].append("No presentations to launch")
+        result['success'] = False
+        return result
+    
+    # Strategy: Smart distribution based on presentations vs screens
+    if num_presentations <= num_screens:
+        # One presentation per screen - distribute normally
         for index, presentation in enumerate(presentations):
             url = presentation.get('url')
             browser = presentation.get('browser', 'chrome')
@@ -343,46 +354,110 @@ def launch_presentations(config: Dict) -> Dict:
                 result['success'] = False
                 continue
             
-            # Position windows side-by-side
-            x_pos = primary_screen['x'] + (index * window_width)
-            y_pos = primary_screen['y']
+            target_screen_id = index % num_screens
             
-            pid = manager.launch_presentation_window_at_position(
-                url, x_pos, y_pos, window_width, screen_height, browser
-            )
+            pid = manager.launch_presentation_window(url, target_screen_id, browser)
             
             if pid:
                 result['windows'].append({
-                    'screen_id': index,
+                    'screen_id': target_screen_id,
                     'pid': pid,
                     'url': url
                 })
             else:
-                result['errors'].append(f"Failed to launch window {index + 1}")
+                result['errors'].append(f"Failed to launch window {index + 1} on screen {target_screen_id}")
                 result['success'] = False
+                
+            # Add delay between launches
+            time.sleep(0.5)
     else:
-        # Original behavior: one presentation per screen
-        for presentation in presentations:
-            url = presentation.get('url')
-            screen_id = presentation.get('screen_id', 0)
-            browser = presentation.get('browser', 'chrome')
+        # More presentations than screens
+        # Calculate how many presentations go on each screen
+        presentations_per_screen = {}
+        remaining = num_presentations
+        
+        # First, try to fit one per screen
+        for screen_id in range(num_screens):
+            if remaining > 0:
+                presentations_per_screen[screen_id] = 1
+                remaining -= 1
+        
+        # Then distribute remaining presentations
+        while remaining > 0:
+            # Pick a random screen to add an extra presentation
+            screen_id = random.randint(0, num_screens - 1)
+            presentations_per_screen[screen_id] = presentations_per_screen.get(screen_id, 0) + 1
+            remaining -= 1
+        
+        # Now launch presentations according to the distribution
+        presentation_index = 0
+        for screen_id in sorted(presentations_per_screen.keys()):
+            count = presentations_per_screen[screen_id]
+            screen = manager.screens[screen_id]
             
-            if not url:
-                result['errors'].append("Missing URL in presentation config")
-                result['success'] = False
-                continue
-            
-            pid = manager.launch_presentation_window(url, screen_id, browser)
-            
-            if pid:
-                result['windows'].append({
-                    'screen_id': screen_id,
-                    'pid': pid,
-                    'url': url
-                })
+            if count == 1:
+                # Single presentation - fullscreen
+                presentation = presentations[presentation_index]
+                url = presentation.get('url')
+                browser = presentation.get('browser', 'chrome')
+                
+                if not url:
+                    result['errors'].append("Missing URL in presentation config")
+                    result['success'] = False
+                    presentation_index += 1
+                    continue
+                
+                pid = manager.launch_presentation_window(url, screen_id, browser)
+                
+                if pid:
+                    result['windows'].append({
+                        'screen_id': screen_id,
+                        'pid': pid,
+                        'url': url,
+                        'split': False
+                    })
+                else:
+                    result['errors'].append(f"Failed to launch window on screen {screen_id}")
+                    result['success'] = False
+                
+                presentation_index += 1
             else:
-                result['errors'].append(f"Failed to launch window on screen {screen_id}")
-                result['success'] = False
+                # Multiple presentations - split the screen
+                window_width = screen['width'] // count
+                
+                for i in range(count):
+                    presentation = presentations[presentation_index]
+                    url = presentation.get('url')
+                    browser = presentation.get('browser', 'chrome')
+                    
+                    if not url:
+                        result['errors'].append("Missing URL in presentation config")
+                        result['success'] = False
+                        presentation_index += 1
+                        continue
+                    
+                    x_pos = screen['x'] + (i * window_width)
+                    y_pos = screen['y']
+                    
+                    pid = manager.launch_presentation_window_at_position(
+                        url, x_pos, y_pos, window_width, screen['height'], browser
+                    )
+                    
+                    if pid:
+                        result['windows'].append({
+                            'screen_id': screen_id,
+                            'pid': pid,
+                            'url': url,
+                            'split': True,
+                            'split_index': i,
+                            'split_total': count
+                        })
+                    else:
+                        result['errors'].append(f"Failed to launch window {presentation_index + 1}")
+                        result['success'] = False
+                    
+                    presentation_index += 1
+                    time.sleep(0.5)
     
     return result
 
