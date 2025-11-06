@@ -14,18 +14,29 @@ import Login from "./pages/Login.jsx";
 import Home from "./pages/Home.jsx";
 import DataPage from "./pages/Data.jsx";
 import VisualizePage from "./pages/Visualize.jsx";
-import DashboardPage from "./pages/Dashboard.jsx";
-import Dashboard from "./pages/Dashboard.jsx"; // ✅ fixed import
+import DynamicDataPage from "./pages/DynamicData.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
+import DynamicDashboard from "./pages/DynamicDashboard.jsx"; 
+import DynamicVisualizePage from "./pages/DynamicVisualize.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import ChatBot from "./ui/ChatBot.jsx";
+import LiquidBackdrop from "./ui/LiquidBackdrop.jsx";
+import { GlassHeader } from "./ui/GlassHeader.jsx";
 import logoImage from "./LOGO.jpg";
 
 // ✅ Centralized navigation
 const navLinks = [
   { to: "/home", label: "Home" },
-  { to: "/data", label: "Data" },
-  { to: "/visualize", label: "Visualize" },
-  { to: "/dashboard", label: "Dashboard" },
+  { to: "/data", label: "Static Data" },
+  { to: "/dashboard", label: "Static Dashboard" },
+  { to: "/dynamic-data", label: "Dynamic Data" },
+  { to: "/dynamic-dashboard", label: "Dynamic Dashboard" },
+];
+
+// Navigation routes for visualization pages
+const visualizationRoutes = [
+  //{ to: "/dynamic-visualize", label: "Dynamic Visualize" },
+  //{ to: "/visualize", label: "Visualize" }
 ];
 
 function Layout() {
@@ -41,25 +52,20 @@ function Layout() {
         isLoginPage ? "bg-slate-950" : "bg-slate-100 dark:bg-slate-900"
       }`}
     >
+      <LiquidBackdrop />
       {/* ====== Header ====== */}
-      <header
-        className={`relative z-40 w-full transition-colors ${
-          isLoginPage
-            ? "bg-transparent shadow-none"
-            : "bg-gradient-to-b from-white/95 via-white/90 to-transparent shadow-md dark:from-slate-900/90 dark:via-slate-900/95 dark:to-transparent"
-        }`}
-      >
-        <div className="w-full flex items-center justify-between px-5 py-5">
+      <header className="relative z-40 w-full px-4 py-4">
+        <GlassHeader className="flex flex-wrap items-center justify-between gap-4">
           {/* === Logo + Brand === */}
           <Link
             to={user ? "/dashboard" : "/login"}
-            className="flex items-center gap-2"
+            className="flex items-center gap-3"
           >
             <div
-              className={`flex h-20 w-20 md:h-28 md:w-28 items-center justify-center overflow-hidden rounded-2xl border-2 shadow-xl ${
+              className={`glass-solid flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl shadow-lg md:h-28 md:w-28 ${
                 isLoginPage
-                  ? "border-white/40 bg-white/20 shadow-white/20"
-                  : "border-white/80 bg-white/60 shadow-brand-900/30 dark:border-slate-200/60 dark:bg-slate-800/60"
+                  ? "border border-white/40 shadow-white/20"
+                  : "border border-white/60 shadow-brand-900/20 dark:border-slate-200/40 dark:shadow-brand-900/30"
               }`}
             >
               <img
@@ -70,7 +76,7 @@ function Layout() {
             </div>
             <div>
               <p
-                className={`text-2xl md:text-3xl font-semibold ${
+                className={`text-2xl font-semibold md:text-3xl ${
                   isLoginPage
                     ? "text-white"
                     : "text-slate-900 dark:text-slate-100"
@@ -82,7 +88,7 @@ function Layout() {
                 className={`text-sm md:text-lg ${
                   isLoginPage
                     ? "text-slate-200"
-                    : "text-slate-500 dark:text-slate-300"
+                    : "text-slate-600 dark:text-slate-300"
                 }`}
               >
                 Data ➤ Charts ➤ Insights
@@ -92,36 +98,35 @@ function Layout() {
 
           {/* === Navigation === */}
           {user ? (
-            <nav className="flex items-center gap-6 text-lg">
-              {navLinks.map((link) => (
+            <nav className="flex flex-wrap items-center gap-3 text-base">
+              {[...navLinks, ...visualizationRoutes].map((link) => (
                 <Link
                   key={link.to}
                   to={link.to}
-                  className={`rounded-full px-4 py-2 font-medium transition ${
+                  className={`glass-hover rounded-full border px-4 py-2 font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:focus-visible:ring-offset-slate-900 ${
                     location.pathname.startsWith(link.to)
-                      ? "bg-blue-100 text-blue-800 dark:bg-blue-200/20 dark:text-blue-100"
-                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                      ? "border-white/30 bg-white/30 text-blue-900 shadow-sm shadow-brand-900/10 dark:border-white/20 dark:bg-white/10 dark:text-blue-100"
+                      : "border-transparent text-slate-600 hover:bg-white/10 hover:text-slate-900 dark:text-slate-200 dark:hover:bg-white/5"
                   }`}
                 >
                   {link.label}
                 </Link>
               ))}
-
               {/* === Theme + User Controls === */}
-              <div className="flex items-center gap-4 pl-4 text-base">
+              <div className="flex items-center gap-3 pl-1 text-sm md:text-base">
                 <button
                   type="button"
                   onClick={toggleTheme}
-                  className="rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                  className="glass-hover rounded-full border border-white/20 px-5 py-2 font-semibold text-slate-600 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-slate-200/20 dark:text-slate-200 dark:hover:bg-white/5 dark:focus-visible:ring-offset-slate-900"
                 >
                   {theme === "dark" ? "Light mode" : "Dark mode"}
                 </button>
-                <span className="hidden text-lg text-slate-500 dark:text-slate-300 sm:inline-block">
+                <span className="hidden text-lg text-slate-500 dark:text-slate-300 lg:inline-block">
                   {user.email}
                 </span>
                 <button
                   onClick={logout}
-                  className="rounded-full border border-slate-200 px-5 py-2 text-base font-medium text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                  className="glass-hover rounded-full border border-white/20 px-5 py-2 font-medium text-slate-600 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:border-slate-200/20 dark:text-slate-200 dark:hover:bg-white/5 dark:focus-visible:ring-offset-slate-900"
                 >
                   Logout
                 </button>
@@ -132,27 +137,27 @@ function Layout() {
               <button
                 type="button"
                 onClick={toggleTheme}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                className={`glass-hover rounded-full border px-4 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:focus-visible:ring-offset-slate-900 ${
                   isLoginPage
-                    ? "border border-white/40 text-white hover:bg-white/20"
-                    : "border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                    ? "border-white/40 text-white hover:bg-white/10"
+                    : "border-slate-200 text-slate-600 hover:bg-white/10 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-white/5"
                 }`}
               >
                 {theme === "dark" ? "Light mode" : "Dark mode"}
               </button>
               <Link
                 to="/login"
-                className={`rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition ${
+                className={`glass-hover rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:focus-visible:ring-offset-slate-900 ${
                   isLoginPage
-                    ? "bg-white/20 text-white border border-white/40 hover:bg-white/30"
-                    : "bg-blue-600 text-white hover:bg-blue-700"
+                    ? "border border-white/40 bg-white/25 text-white hover:bg-white/30"
+                    : "border border-transparent bg-brand-500 text-white hover:bg-brand-600"
                 }`}
               >
                 Login
               </Link>
             </div>
           )}
-        </div>
+        </GlassHeader>
       </header>
 
       {/* ====== Main Content ====== */}
@@ -231,6 +236,30 @@ export default function App() {
           element={
             <PrivateRoute>
               <Dashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/dynamic-data"
+          element={
+            <PrivateRoute>
+              <DynamicDataPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/dynamic-dashboard"
+          element={
+            <PrivateRoute>
+              <DynamicDashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/dynamic-visualize/:id?"
+          element={
+            <PrivateRoute>
+              <DynamicVisualizePage />
             </PrivateRoute>
           }
         />

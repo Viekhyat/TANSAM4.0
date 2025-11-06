@@ -7,3 +7,4 @@
 .env.production
 .env.example
 .env.example.test
+/src/backend/node_modules

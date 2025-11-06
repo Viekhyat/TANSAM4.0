@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../providers/AuthContext.jsx";
+import GlassCard from "../ui/GlassCard.jsx";
 
 export default function Home() {
   const { user } = useAuth();
@@ -31,8 +32,8 @@ export default function Home() {
       </div>
       
       {/* Features Section */}
-      <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+      <div className="w-full max-w-6xl grid grid-cols-1 gap-8 md:grid-cols-3 mb-16">
+        <GlassCard className="p-6 shadow-lg hover:shadow-xl transition-shadow">
           <div className="w-12 h-12 bg-brand-100 dark:bg-brand-900 rounded-full flex items-center justify-center mb-4">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -40,9 +41,9 @@ export default function Home() {
           </div>
           <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">Data Visualization</h3>
           <p className="text-slate-600 dark:text-slate-300">Create beautiful, interactive charts and graphs from your data with just a few clicks.</p>
-        </div>
+        </GlassCard>
         
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+        <GlassCard className="p-6 shadow-lg hover:shadow-xl transition-shadow">
           <div className="w-12 h-12 bg-brand-100 dark:bg-brand-900 rounded-full flex items-center justify-center mb-4">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -50,9 +51,9 @@ export default function Home() {
           </div>
           <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">Real-time Analysis</h3>
           <p className="text-slate-600 dark:text-slate-300">Instantly analyze your data and get valuable insights without complex setup or configuration.</p>
-        </div>
+        </GlassCard>
         
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+        <GlassCard className="p-6 shadow-lg hover:shadow-xl transition-shadow">
           <div className="w-12 h-12 bg-brand-100 dark:bg-brand-900 rounded-full flex items-center justify-center mb-4">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
@@ -60,7 +61,7 @@ export default function Home() {
           </div>
           <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">Customizable Dashboards</h3>
           <p className="text-slate-600 dark:text-slate-300">Build personalized dashboards to monitor your key metrics and share insights with your team.</p>
-        </div>
+        </GlassCard>
       </div>
       
       {/* CTA Section */}

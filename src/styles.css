@@ -12,20 +12,6 @@ body {
   color: #f1f5f9; /* dark:text-slate-100 */
 }
 
-.glass-panel {
-  background-color: rgba(255, 255, 255, 0.7); /* bg-white/70 */
-  backdrop-filter: blur(12px); /* backdrop-blur-md */
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4); /* ring-1 ring-white/40 */
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
-.dark .glass-panel {
-  background-color: rgba(30, 41, 59, 0.6); /* dark:bg-slate-800/60 */
-  box-shadow: 0 0 0 1px rgba(51, 65, 85, 0.6); /* dark:ring-slate-700/60 */
-}
-
 .sticky-edge {
   mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
