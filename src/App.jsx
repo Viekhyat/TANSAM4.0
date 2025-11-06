@@ -18,6 +18,8 @@ import DynamicDataPage from "./pages/DynamicData.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import DynamicDashboard from "./pages/DynamicDashboard.jsx"; 
 import DynamicVisualizePage from "./pages/DynamicVisualize.jsx";
+import PresentationMode from "./ui/PresentationMode.jsx";
+import PresentationWindow from "./ui/PresentationWindow.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import ChatBot from "./ui/ChatBot.jsx";
 import LiquidBackdrop from "./ui/LiquidBackdrop.jsx";
@@ -31,6 +33,7 @@ const navLinks = [
   { to: "/dashboard", label: "Static Dashboard" },
   { to: "/dynamic-data", label: "Dynamic Data" },
   { to: "/dynamic-dashboard", label: "Dynamic Dashboard" },
+  { to: "/presentation", label: "Presentation" },
 ];
 
 // Navigation routes for visualization pages
@@ -198,6 +201,13 @@ export default function App() {
 
   return (
     <Routes location={location} key={location.pathname}>
+      {/* Presentation Window Route - No Layout, No Auth Check (opened from authenticated session) */}
+      <Route
+        path="/presentation-window"
+        element={<PresentationWindow />}
+      />
+
+      {/* Main Layout Routes */}
       <Route element={<Layout />}>
         <Route
           path="/"
@@ -260,6 +270,14 @@ export default function App() {
           element={
             <PrivateRoute>
               <DynamicVisualizePage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/presentation"
+          element={
+            <PrivateRoute>
+              <PresentationMode />
             </PrivateRoute>
           }
         />

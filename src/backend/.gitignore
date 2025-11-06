@@ -1,0 +1,9 @@
+/node_modules
+.env
+/package-lock.json
+.env.test
+.env.development
+.env.production
+.env.example
+.env.example.test
+/src/backend/node_modules
