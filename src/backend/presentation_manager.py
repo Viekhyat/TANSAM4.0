@@ -5,6 +5,7 @@ Launches browser windows on specific screens with precise positioning
 """
 
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -131,105 +132,6 @@ class ScreenManager:
 
     def _detect_screens_windows(self) -> List[Dict]:
         """Detect screens on Windows"""
-        try:
-            # Try using PowerShell to get monitor info
-            powershell_script = """
-            Add-Type @"
-                using System;
-                using System.Runtime.InteropServices;
-                public class Display {
-                    [DllImport("user32.dll")]
-                    public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
-
-                    [DllImport("user32.dll")]
-                    public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
-
-                    public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
-
-                    [StructLayout(LayoutKind.Sequential)]
-                    public struct RECT {
-                        public int Left;
-                        public int Top;
-                        public int Right;
-                        public int Bottom;
-                    }
-
-                    [StructLayout(LayoutKind.Sequential)]
-                    public struct MONITORINFO {
-                        public uint Size;
-                        public RECT Monitor;
-                        public RECT WorkArea;
-                        public uint Flags;
-                    }
-                }
-"@
-
-            $monitors = @()
-            $callback = {
-                param($hMonitor, $hdcMonitor, $lprcMonitor, $dwData)
-                $info = New-Object Display+MONITORINFO
-                $info.Size = [System.Runtime.InteropServices.Marshal]::SizeOf($info)
-                [Display]::GetMonitorInfo($hMonitor, [ref]$info)
-
-                $monitors += [PSCustomObject]@{
-                    X = $info.Monitor.Left
-                    Y = $info.Monitor.Top
-                    Width = $info.Monitor.Right - $info.Monitor.Left
-                    Height = $info.Monitor.Bottom - $info.Monitor.Top
-                    Primary = ($info.Flags -eq 1)
-                }
-                return $true
-            }
-
-            [Display]::EnumDisplayMonitors([IntPtr]::Zero, [IntPtr]::Zero, $callback, [IntPtr]::Zero)
-            $monitors | ConvertTo-Json
-            """
-
-            result = subprocess.run(
-                ["powershell", "-Command", powershell_script],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-
-            if result.returncode == 0 and result.stdout:
-                import json
-
-                monitors_data = json.loads(result.stdout)
-
-                screens = []
-                if isinstance(monitors_data, list):
-                    for i, mon in enumerate(monitors_data):
-                        screens.append(
-                            {
-                                "id": i,
-                                "x": mon["X"],
-                                "y": mon["Y"],
-                                "width": mon["Width"],
-                                "height": mon["Height"],
-                                "primary": mon.get("Primary", False),
-                            }
-                        )
-                elif isinstance(monitors_data, dict):
-                    screens.append(
-                        {
-                            "id": 0,
-                            "x": monitors_data["X"],
-                            "y": monitors_data["Y"],
-                            "width": monitors_data["Width"],
-                            "height": monitors_data["Height"],
-                            "primary": monitors_data.get("Primary", True),
-                        }
-                    )
-
-                return screens if screens else self._detect_screens_windows_fallback()
-        except Exception as e:
-            print(f"Error detecting Windows screens with PowerShell: {e}")
-
-        return self._detect_screens_windows_fallback()
-
-    def _detect_screens_windows_fallback(self) -> List[Dict]:
-        """Fallback method for Windows screen detection using tkinter"""
         try:
             import tkinter as tk
 
@@ -384,15 +286,6 @@ class ScreenManager:
                 capture_output=True,
             )
 
-            time.sleep(0.2)
-
-            # Add fullscreen state (similar to Windows ShowWindow with SW_MAXIMIZE)
-            subprocess.run(
-                ["wmctrl", "-r", ":ACTIVE:", "-b", "add,fullscreen"],
-                timeout=2,
-                capture_output=True,
-            )
-
         except Exception as e:
             print(f"wmctrl positioning attempt: {e}", file=sys.stderr)
             # Try alternative xdotool method
@@ -428,15 +321,6 @@ class ScreenManager:
                         timeout=2,
                         capture_output=True,
                     )
-
-                    time.sleep(0.2)
-
-                    # Try to set fullscreen with xdotool
-                    subprocess.run(
-                        ["xdotool", "windowstate", "--add", "FULLSCREEN", window_id],
-                        timeout=2,
-                        capture_output=True,
-                    )
             except Exception as e2:
                 print(f"xdotool positioning error: {e2}", file=sys.stderr)
 
@@ -463,10 +347,12 @@ class ScreenManager:
         process = subprocess.Popen(
             cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
-        time.sleep(2.0)  # Give window time to open
+
+        time.sleep(2.5)  # Give window time to fully open
 
         # Use PowerShell to position the window
         try:
+            # Get the window handle by finding the newest window or foreground window
             powershell_script = f"""
             Add-Type @"
                 using System;
@@ -478,13 +364,22 @@ class ScreenManager:
                     public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
                     [DllImport("user32.dll")]
                     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+                    [DllImport("user32.dll")]
+                    public static extern bool IsWindowVisible(IntPtr hWnd);
                 }}
 "@
+            # Try to get the newest Chrome/browser window
             $hwnd = [Win32]::GetForegroundWindow()
+
+            # Restore window if minimized, normalize if maximized
             [Win32]::ShowWindow($hwnd, 1)
-            Start-Sleep -Milliseconds 200
+            Start-Sleep -Milliseconds 300
+
+            # Move and resize the window
             [Win32]::MoveWindow($hwnd, {screen["x"]}, {screen["y"]}, {screen["width"]}, {screen["height"]}, $true)
-            Start-Sleep -Milliseconds 200
+            Start-Sleep -Milliseconds 300
+
+            # Maximize the window (SW_MAXIMIZE = 3)
             [Win32]::ShowWindow($hwnd, 3)
             """
 
@@ -541,9 +436,9 @@ class ScreenManager:
 
             time.sleep(0.2)
 
-            # Add fullscreen state for cleaner presentation look
+            # Remove decorations for cleaner look (optional)
             subprocess.run(
-                ["wmctrl", "-r", ":ACTIVE:", "-b", "add,fullscreen"],
+                ["wmctrl", "-r", ":ACTIVE:", "-b", "add,above"],
                 timeout=2,
                 capture_output=True,
             )
@@ -599,15 +494,6 @@ class ScreenManager:
                         timeout=2,
                         capture_output=True,
                     )
-
-                    time.sleep(0.2)
-
-                    # Try to set fullscreen with xdotool
-                    subprocess.run(
-                        ["xdotool", "windowstate", "--add", "FULLSCREEN", window_id],
-                        timeout=2,
-                        capture_output=True,
-                    )
             except Exception as e2:
                 print(f"xdotool positioning error: {e2}", file=sys.stderr)
 
@@ -625,9 +511,11 @@ class ScreenManager:
         process = subprocess.Popen(
             cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
-        time.sleep(2.0)  # Give window time to open
 
-        # Use PowerShell to position the window
+        # Wait for window to appear
+        time.sleep(2.5)
+
+        # Use PowerShell to position the window at specific coordinates
         try:
             powershell_script = f"""
             Add-Type @"
@@ -640,12 +528,26 @@ class ScreenManager:
                     public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
                     [DllImport("user32.dll")]
                     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+                    [DllImport("user32.dll", SetLastError = true)]
+                    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
                 }}
 "@
+            $HWND_TOPMOST = [IntPtr]::new(-1)
+            $SWP_SHOWWINDOW = 0x0040
+
+            # Get the foreground window (should be the newly created browser window)
             $hwnd = [Win32]::GetForegroundWindow()
+
+            # Restore window to normal state first
             [Win32]::ShowWindow($hwnd, 1)
-            Start-Sleep -Milliseconds 200
+            Start-Sleep -Milliseconds 300
+
+            # Move and resize to the specified position
             [Win32]::MoveWindow($hwnd, {x}, {y}, {width}, {height}, $true)
+            Start-Sleep -Milliseconds 200
+
+            # Keep window on top for split-screen presentations
+            [Win32]::SetWindowPos($hwnd, $HWND_TOPMOST, {x}, {y}, {width}, {height}, $SWP_SHOWWINDOW)
             """
 
             subprocess.run(
@@ -687,7 +589,7 @@ class ScreenManager:
         try:
             subprocess.run(["which", command], capture_output=True, check=True)
             return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             return False
 
 
