@@ -166,7 +166,8 @@ class ScreenManager:
                 
                 return screens if screens else self._detect_screens_windows_fallback()
         except Exception as e:
-            print(f"Error detecting Windows screens with PowerShell: {e}")
+            # Silently fall back to tkinter method - don't print error to stderr
+            pass
         
         return self._detect_screens_windows_fallback()
     
@@ -495,8 +496,26 @@ class ScreenManager:
                 return "/Applications/Firefox.app/Contents/MacOS/firefox"
         elif self.system == "Windows":
             if browser.lower() in ["chrome", "chromium"]:
+                # Try to find Chrome in common locations
+                chrome_paths = [
+                    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+                    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+                    "chrome.exe"  # Fallback to PATH
+                ]
+                for path in chrome_paths:
+                    if os.path.exists(path):
+                        return path
                 return "chrome.exe"
             elif browser.lower() == "firefox":
+                # Try to find Firefox in common locations
+                firefox_paths = [
+                    "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+                    "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe",
+                    "firefox.exe"  # Fallback to PATH
+                ]
+                for path in firefox_paths:
+                    if os.path.exists(path):
+                        return path
                 return "firefox.exe"
         
         return "google-chrome"  # Default fallback

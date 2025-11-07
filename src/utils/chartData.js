@@ -151,5 +151,75 @@ export const buildChartData = (rows, chartType, mappings, options) => {
     return filterTopN(aggregated, topN, radiusField);
   }
 
+
+
+  if (chartType === "table") {
+    const xField = mappings?.xField;
+    const yFields = mappings?.yFields || [];
+    if (!xField || yFields.length === 0) return [];
+    if (aggregation === "none") {
+      return dataRows
+        .filter((row) => row && row[xField] !== undefined && row[xField] !== null)
+        .map((row) => {
+          const entry = { [xField]: row[xField] };
+          yFields.forEach((field) => {
+            entry[field] = coerceNumber(row[field]) ?? row[field];
+          });
+          return entry;
+        });
+    }
+    const grouped = dataRows.reduce((acc, row) => {
+      if (!row) return acc;
+      const key = row[xField];
+      if (key === undefined || key === null) return acc;
+      const bucket = acc.get(key) || [];
+      bucket.push(row);
+      acc.set(key, bucket);
+      return acc;
+    }, new Map());
+    const aggregated = Array.from(grouped.entries()).map(([key, items]) => {
+      const entry = { [xField]: key };
+      yFields.forEach((field) => {
+        const values = items.map((item) => (item ? item[field] : null));
+        entry[field] = aggregateValues(values, aggregation);
+      });
+      return entry;
+    });
+    return filterTopN(aggregated, topN, yFields[0]);
+  }
+
+  if (chartType === "heatmap") {
+    const xField = mappings?.xField;
+    const yField = mappings?.yField;
+    if (!xField || !yField) return [];
+    if (aggregation === "none") {
+      return dataRows
+        .filter((row) => row && row[xField] !== undefined && row[xField] !== null)
+        .map((row) => {
+          const y = coerceNumber(row[yField]);
+          if (y === null) return null;
+          return {
+            [xField]: row[xField],
+            [yField]: y
+          };
+        })
+        .filter(Boolean);
+    }
+    const grouped = dataRows.reduce((acc, row) => {
+      if (!row) return acc;
+      const key = row[xField];
+      if (key === undefined || key === null) return acc;
+      const bucket = acc.get(key) || [];
+      bucket.push(row[yField]);
+      acc.set(key, bucket);
+      return acc;
+    }, new Map());
+    const aggregated = Array.from(grouped.entries()).map(([key, values]) => ({
+      [xField]: key,
+      [yField]: aggregateValues(values, aggregation)
+    }));
+    return filterTopN(aggregated, topN, yField);
+  }
+
   return dataRows;
 };

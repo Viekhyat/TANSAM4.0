@@ -12,6 +12,8 @@ export default function PresentationMode() {
   const [dynamicCharts, setDynamicCharts] = useState([]);
   const [dynamicConnections, setDynamicConnections] = useState([]);
   const [selectedCharts, setSelectedCharts] = useState([]);
+  const [selectedStaticCharts, setSelectedStaticCharts] = useState([]);
+  const [selectedDynamicCharts, setSelectedDynamicCharts] = useState([]);
   const [isPresenting, setIsPresenting] = useState(false);
   const [currentScreenIndex, setCurrentScreenIndex] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -39,6 +41,19 @@ export default function PresentationMode() {
 
     return [...staticList, ...dynamicList];
   }, [staticCharts, dynamicCharts]);
+
+  // Parse chart ID to extract source and actual ID
+  const parseId = useCallback((chartId) => {
+    const parts = chartId.split('-');
+    return { source: parts[0], id: parts.slice(1).join('-') };
+  }, []);
+
+  // Sync combined selectedCharts with separate selections
+  useEffect(() => {
+    const staticSelected = selectedStaticCharts.map(id => `static-${id}`);
+    const dynamicSelected = selectedDynamicCharts.map(id => `dynamic-${id}`);
+    setSelectedCharts([...staticSelected, ...dynamicSelected]);
+  }, [selectedStaticCharts, selectedDynamicCharts]);
 
   const fetchDynamicCharts = useCallback(async () => {
     if (abortControllerRef.current) {
@@ -77,21 +92,45 @@ export default function PresentationMode() {
   }, [fetchDynamicCharts]);
 
   const handleChartToggle = (chartId) => {
-    setSelectedCharts((prev) => {
-      if (prev.includes(chartId)) {
-        return prev.filter((id) => id !== chartId);
-      } else {
-        return [...prev, chartId];
-      }
-    });
+    const { source, id } = parseId(chartId);
+    
+    if (source === 'static') {
+      setSelectedStaticCharts((prev) => {
+        if (prev.includes(id)) {
+          return prev.filter((chartId) => chartId !== id);
+        } else {
+          return [...prev, id];
+        }
+      });
+    } else if (source === 'dynamic') {
+      setSelectedDynamicCharts((prev) => {
+        if (prev.includes(id)) {
+          return prev.filter((chartId) => chartId !== id);
+        } else {
+          return [...prev, id];
+        }
+      });
+    }
   };
 
   const handleSelectAll = () => {
-    setSelectedCharts(allCharts.map(c => `${c.source}-${c.id}`));
+    const staticIds = Object.keys(staticCharts);
+    const dynamicIds = dynamicCharts.map(c => c.id);
+    setSelectedStaticCharts(staticIds);
+    setSelectedDynamicCharts(dynamicIds);
   };
 
   const handleClearSelection = () => {
-    setSelectedCharts([]);
+    setSelectedStaticCharts([]);
+    setSelectedDynamicCharts([]);
+  };
+
+  const handleSelectAllStatic = () => {
+    setSelectedStaticCharts(Object.keys(staticCharts));
+  };
+
+  const handleSelectAllDynamic = () => {
+    setSelectedDynamicCharts(dynamicCharts.map(c => c.id));
   };
 
   const detectScreens = useCallback(() => {
@@ -351,10 +390,15 @@ export default function PresentationMode() {
             // Fire backend to open kiosk window on selected display
             try {
               const presentUrl = `${window.location.origin}/presentation?kiosk=1`;
-              await fetch(`${BACKEND_URL}/api/present`, {
+              await fetch(`${BACKEND_URL}/api/launch-presentations`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: presentUrl, monitorIndex: selectedDisplayId })
+                body: JSON.stringify({ 
+                  presentations: [{
+                    url: presentUrl, 
+                    screen_id: selectedDisplayId 
+                  }]
+                })
               });
             } catch (e) {
               console.warn('Failed to trigger external presenter:', e);
@@ -378,7 +422,7 @@ export default function PresentationMode() {
         />
       )}
 
-      <section className="space-y-4">
+      <section className="space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Available Charts</h2>
           <div className="flex items-center gap-2">
@@ -422,15 +466,76 @@ export default function PresentationMode() {
             <p>No charts available. Create some charts first.</p>
           </GlassCard>
         ) : (
-          <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-            {allCharts.map((chart) => (
-              <ChartSelectionCard
-                key={`${chart.source}-${chart.id}`}
-                chart={chart}
-                isSelected={selectedCharts.includes(`${chart.source}-${chart.id}`)}
-                onToggle={() => handleChartToggle(`${chart.source}-${chart.id}`)}
-              />
-            ))}
+          <div className="space-y-8">
+            {/* Static Charts Section */}
+            {Object.keys(staticCharts).length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+                    Static Dashboards
+                    <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                      ({Object.keys(staticCharts).length} charts, {selectedStaticCharts.length} selected)
+                    </span>
+                  </h3>
+                  <button
+                    onClick={handleSelectAllStatic}
+                    className="rounded-full border border-blue-300 dark:border-blue-600 px-3 py-1 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition"
+                  >
+                    Select All Static
+                  </button>
+                </div>
+                <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+                  {Object.values(staticCharts).map((chart) => (
+                    <ChartSelectionCard
+                      key={`static-${chart.id}`}
+                      chart={{
+                        ...chart,
+                        source: "static",
+                        displayName: `${chart.title} (Static)`
+                      }}
+                      isSelected={selectedStaticCharts.includes(chart.id)}
+                      onToggle={() => handleChartToggle(`static-${chart.id}`)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Dynamic Charts Section */}
+            {dynamicCharts.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                    Dynamic Dashboards
+                    <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                      ({dynamicCharts.length} charts, {selectedDynamicCharts.length} selected)
+                    </span>
+                  </h3>
+                  <button
+                    onClick={handleSelectAllDynamic}
+                    className="rounded-full border border-green-300 dark:border-green-600 px-3 py-1 text-xs font-semibold text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/30 transition"
+                  >
+                    Select All Dynamic
+                  </button>
+                </div>
+                <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+                  {dynamicCharts.map((chart) => (
+                    <ChartSelectionCard
+                      key={`dynamic-${chart.id}`}
+                      chart={{
+                        ...chart,
+                        source: "dynamic",
+                        displayName: `${chart.title} (Dynamic)`
+                      }}
+                      isSelected={selectedDynamicCharts.includes(chart.id)}
+                      onToggle={() => handleChartToggle(`dynamic-${chart.id}`)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -564,30 +669,85 @@ function PresentationCanvas({ selectedCharts, columns, onExit }) {
     return buildChartData(rows, chart.chartType, chart.mappings, chart.options || {});
   }, [datasets]);
 
+  // Separate charts by source type
+  const separatedCharts = useMemo(() => {
+    const staticChartsList = [];
+    const dynamicChartsList = [];
+    
+    selectedCharts.forEach((cid) => {
+      const { source, chart } = resolveChart(cid);
+      if (chart) {
+        if (source === 'static') {
+          staticChartsList.push({ cid, chart, source });
+        } else {
+          dynamicChartsList.push({ cid, chart, source });
+        }
+      }
+    });
+    
+    return { staticChartsList, dynamicChartsList };
+  }, [selectedCharts, resolveChart]);
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="flex-1 overflow-auto p-6">
-        <div className="grid gap-6" style={gridStyle}>
-          {selectedCharts.map((cid) => {
-            const { source, chart } = resolveChart(cid);
-            if (!chart) {
-              return (
-                <div key={cid} className="bg-slate-900 rounded-lg p-4 text-center text-slate-300">Chart not found</div>
-              );
-            }
-            return (
-              <div key={cid} className="bg-slate-900 rounded-lg p-4 min-h-[240px] flex flex-col">
-                <div className="text-white text-sm font-semibold mb-3">{chart.title}</div>
-                <div className="flex-1 rounded-md overflow-hidden">
-                  {source === 'static' ? (
-                    <ChartRenderer chart={chart} data={buildStaticData(chart)} skipValidation />
-                  ) : (
-                    <ChartWithRealTimeData chart={chart} />
-                  )}
-                </div>
+        <div className="space-y-8">
+          {/* Static Charts Section */}
+          {separatedCharts.staticChartsList.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 px-2">
+                <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
+                <h3 className="text-lg font-semibold text-blue-400">Static Dashboards</h3>
+                <span className="text-sm text-blue-300/70">({separatedCharts.staticChartsList.length} charts)</span>
               </div>
-            );
-          })}
+              <div className="grid gap-6" style={gridStyle}>
+                {separatedCharts.staticChartsList.map(({ cid, chart, source }) => (
+                  <div key={cid} className="bg-slate-900 rounded-lg p-4 min-h-[240px] flex flex-col border-l-4 border-blue-500">
+                    <div className="text-white text-sm font-semibold mb-3 flex items-center gap-2">
+                      {chart.title}
+                      <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded">Static</span>
+                    </div>
+                    <div className="flex-1 rounded-md overflow-hidden">
+                      <ChartRenderer chart={chart} data={buildStaticData(chart)} skipValidation />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Charts Section */}
+          {separatedCharts.dynamicChartsList.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 px-2">
+                <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                <h3 className="text-lg font-semibold text-green-400">Dynamic Dashboards</h3>
+                <span className="text-sm text-green-300/70">({separatedCharts.dynamicChartsList.length} charts)</span>
+              </div>
+              <div className="grid gap-6" style={gridStyle}>
+                {separatedCharts.dynamicChartsList.map(({ cid, chart, source }) => (
+                  <div key={cid} className="bg-slate-900 rounded-lg p-4 min-h-[240px] flex flex-col border-l-4 border-green-500">
+                    <div className="text-white text-sm font-semibold mb-3 flex items-center gap-2">
+                      {chart.title}
+                      <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded">Dynamic</span>
+                    </div>
+                    <div className="flex-1 rounded-md overflow-hidden">
+                      <ChartWithRealTimeData chart={chart} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Fallback for when no charts are found */}
+          {separatedCharts.staticChartsList.length === 0 && separatedCharts.dynamicChartsList.length === 0 && (
+            <div className="flex h-64 items-center justify-center rounded-2xl border border-dashed border-white/30 dark:border-slate-200/20">
+              <div className="text-center text-slate-400">
+                <p>No charts selected for presentation</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       <div className="bg-slate-950 border-t border-slate-800 px-6 py-4 flex items-center justify-between">

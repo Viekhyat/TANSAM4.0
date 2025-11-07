@@ -3,6 +3,7 @@ import html2canvas from "html2canvas";
 import { useTheme } from "../providers/ThemeContext.jsx";
 import { defaultPalette } from "../utils/colors.js";
 import Dynamic3DCharts from "./Dynamic3DCharts.jsx";
+import CardAggregation from "./CardAggregation.jsx";
 import {
   Area,
   AreaChart,
@@ -99,6 +100,17 @@ export default function ChartRenderer({ chart, data = [], compact = false, skipV
       const parsed = Number(trimmed);
       return Number.isFinite(parsed) ? parsed : null;
     }
+    // Card Aggregation - displays aggregated metrics in card format
+    if (chartType === "card") {
+      const yField = mappings.yField || (mappings.yFields && mappings.yFields[0]);
+      if (!skipValidation && !ensureFieldsPresent([yField])) {
+        return renderPlaceholder("Select a numeric field for aggregation.");
+      }
+      if (!mappedData.length) return renderPlaceholder("No data available.");
+      
+      return <CardAggregation data={mappedData} field={yField} />;
+    }
+
     return null;
   };
 
@@ -198,7 +210,40 @@ export default function ChartRenderer({ chart, data = [], compact = false, skipV
           if (row == null || typeof row !== "object") return null;
           const value = coerceNumeric(row[yField]);
           if (value === null) return null;
-          return { [yField]: value };
+          return { value };
+        })
+        .filter(Boolean);
+    }
+
+
+
+    if (chartType === "table") {
+      const xField = mappings.xField;
+      const yFields = mappings.yFields || [];
+      if (!ensureFieldsPresent([xField]) || yFields.length === 0) return [];
+      return mappedData
+        .map((row) => {
+          if (row == null || typeof row !== "object") return null;
+          const entry = { [xField]: row[xField] };
+          yFields.forEach((field) => {
+            entry[field] = coerceNumeric(row[field]) ?? row[field];
+          });
+          return entry;
+        })
+        .filter(Boolean);
+    }
+
+    if (chartType === "heatmap") {
+      const xField = mappings.xField;
+      const yField = mappings.yField;
+      if (!ensureFieldsPresent([xField, yField])) return [];
+      return mappedData
+        .map((row) => {
+          if (row == null || typeof row !== "object") return null;
+          const x = row[xField];
+          const y = coerceNumeric(row[yField]);
+          if (x === undefined || x === null || y === null) return null;
+          return { [xField]: x, [yField]: y };
         })
         .filter(Boolean);
     }
@@ -502,6 +547,139 @@ export default function ChartRenderer({ chart, data = [], compact = false, skipV
             seriesColors={seriesColors}
             palette={palette}
           />
+        </div>
+      );
+    }
+
+
+
+    // Table View - displays data in tabular format
+    if (chartType === "table") {
+      const xField = mappings.xField;
+      const yFields = mappings.yFields || [];
+      if (!skipValidation && (!ensureFieldsPresent([xField]) || yFields.length === 0)) {
+        return renderPlaceholder("Select row identifier and at least one column field.");
+      }
+      if (!safeData.length) return renderPlaceholder("No data available.");
+      
+      return (
+        <div className="p-4">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+              <thead className="bg-slate-50 dark:bg-slate-800">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+                    {xField}
+                  </th>
+                  {yFields.map((field) => (
+                    <th key={field} className="px-4 py-2 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+                      {field}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-700">
+                {safeData.slice(0, 10).map((row, index) => (
+                  <tr key={index} className={index % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50 dark:bg-slate-800/50"}>
+                    <td className="px-4 py-2 text-sm text-slate-900 dark:text-slate-100">
+                      {row[xField]}
+                    </td>
+                    {yFields.map((field) => (
+                      <td key={field} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300">
+                        {typeof row[field] === "number" ? row[field].toFixed(2) : row[field]}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {safeData.length > 10 && (
+              <div className="text-xs text-slate-500 dark:text-slate-400 text-center py-2">
+                Showing 10 of {safeData.length} rows
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Heat Map - visualizes data density with colors
+    if (chartType === "heatmap") {
+      const xField = mappings.xField;
+      const yField = mappings.yField;
+      if (!skipValidation && !ensureFieldsPresent([xField, yField])) {
+        return renderPlaceholder("Select X and Y fields for heat map.");
+      }
+      if (!safeData.length) return renderPlaceholder("No data available.");
+      
+      // Group data by x values
+      const xValues = [...new Set(safeData.map(d => d[xField]))];
+      const yValues = [...new Set(safeData.map(d => d[yField]))];
+      
+      // Create a grid of values
+      const grid = xValues.map(x => ({
+        [xField]: x,
+        ...yValues.reduce((acc, y) => {
+          const dataPoint = safeData.find(d => d[xField] === x && d[yField] === y);
+          acc[y] = dataPoint ? dataPoint[yField] : 0;
+          return acc;
+        }, {})
+      }));
+      
+      // Find min and max values for color scaling
+      const allValues = safeData.map(d => d[yField]);
+      const minValue = Math.min(...allValues);
+      const maxValue = Math.max(...allValues);
+      
+      return (
+        <div className="p-4">
+          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${xValues.length + 1}, minmax(0, 1fr))` }}>
+            <div></div>
+            {xValues.map(x => (
+              <div key={x} className="text-xs text-center font-medium text-slate-600 dark:text-slate-300 p-2">
+                {x}
+              </div>
+            ))}
+            {yValues.map(y => (
+              <>
+                <div key={y} className="text-xs font-medium text-slate-600 dark:text-slate-300 p-2 flex items-center">
+                  {y}
+                </div>
+                {xValues.map(x => {
+                  const dataPoint = safeData.find(d => d[xField] === x && d[yField] === y);
+                  const value = dataPoint ? dataPoint[yField] : 0;
+                  const intensity = (value - minValue) / (maxValue - minValue);
+                  const opacity = Math.max(0.1, intensity);
+                  return (
+                    <div
+                      key={`${x}-${y}`}
+                      className="aspect-square flex items-center justify-center text-xs font-medium rounded"
+                      style={{
+                        backgroundColor: `rgba(59, 130, 246, ${opacity})`,
+                        color: intensity > 0.5 ? "white" : "black"
+                      }}
+                      title={`${xField}: ${x}, ${yField}: ${y} = ${value.toFixed(2)}`}
+                    >
+                      {value.toFixed(1)}
+                    </div>
+                  );
+                })}
+              </>
+            ))}
+          </div>
+          <div className="flex justify-between items-center mt-4 text-xs text-slate-500 dark:text-slate-400">
+            <span>Low</span>
+            <div className="flex items-center gap-1">
+              {[0, 0.25, 0.5, 0.75, 1].map((intensity, i) => (
+                <div
+                  key={i}
+                  className="w-4 h-4 rounded"
+                  style={{ backgroundColor: `rgba(59, 130, 246, ${intensity})` }}
+                />
+              ))}
+            </div>
+            <span>High</span>
+          </div>
         </div>
       );
     }

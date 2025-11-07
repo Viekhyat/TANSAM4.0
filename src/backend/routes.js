@@ -395,7 +395,7 @@ router.post("/launch-presentations", (req, res) => {
     const pythonScript = path.join(__dirname, 'presentation_manager.py');
     console.log('Python script path:', pythonScript);
     
-    const python = spawn('python3', [pythonScript, JSON.stringify(config)]);
+    const python = spawn('python', [pythonScript, JSON.stringify(config)]);
     
     let output = '';
     let error = '';
@@ -444,7 +444,7 @@ router.post("/launch-presentations", (req, res) => {
 router.get("/screens", (req, res) => {
   try {
     const pythonScript = path.join(__dirname, 'presentation_manager.py');
-    const python = spawn('python3', [pythonScript]);
+    const python = spawn('python', [pythonScript]);
     
     let output = '';
     let error = '';

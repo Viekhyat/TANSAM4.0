@@ -176,8 +176,8 @@ function Layout() {
         </div>
       </footer>
 
-      {/* ====== ChatBot (for logged-in users only) ====== */}
-      {user && <ChatBot />}
+      {/* ====== ChatBot (for logged-in users only, excluding presentation routes) ====== */}
+      {user && !location.pathname.startsWith('/presentation-window') && !location.pathname.startsWith('/presentation') && <ChatBot />}
     </div>
   );
 }

@@ -17,6 +17,8 @@ const chartDefinitions = [
   { value: "histogram", label: "Histogram", description: "Shows data distribution" },
   { value: "box", label: "Box Plot", description: "Identifies outliers and data spread" },
   { value: "gauge", label: "Gauge Chart", description: "Shows progress or KPI value" },
+  { value: "table", label: "Table View", description: "Show data in tabular format for comparison" },
+  { value: "heatmap", label: "Heat Map", description: "Visualize data density and patterns with colors" },
   { value: "scatter3d", label: "3D Scatter Plot", description: "Relationship among three variables" },
   { value: "surface3d", label: "3D Surface Plot", description: "Trend or pattern visualization in 3D" },
   { value: "line3d", label: "3D Line Plot", description: "Time or path-based 3D trend visualization" }
@@ -138,6 +140,20 @@ const suggestMappings = (chartType, meta, current) => {
     if (!mapHasField(current.zField)) {
       suggestions.zField = numericFields[2] || secondNumeric || firstNumeric;
     }
+  } else if (chartType === "table") {
+    if (!mapHasField(current.xField)) {
+      suggestions.xField = firstHeader;
+    }
+    if ((current.yFields || []).length === 0) {
+      suggestions.yFields = numericFields.slice(0, Math.min(5, numericFields.length));
+    }
+  } else if (chartType === "heatmap") {
+    if (!mapHasField(current.xField)) {
+      suggestions.xField = firstHeader;
+    }
+    if (!mapHasField(current.yField)) {
+      suggestions.yField = secondNumeric || firstNumeric;
+    }
   }
 
   return suggestions;
@@ -151,6 +167,37 @@ const fieldTypeLabel = (field, typeMap) => {
   if (type === "date") return "Date";
   return "Text";
 };
+
+const FieldSelector = ({ value, onChange, fields }) => (
+  <select value={value || ""} onChange={(e) => onChange(e.target.value || null)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100">
+    <option value="">Select field</option>
+    {fields.map((f) => (
+      <option key={f} value={f}>{f}</option>
+    ))}
+  </select>
+);
+
+const MultiFieldSelector = ({ values, onChange, fields }) => (
+  <div className="space-y-2">
+    {fields.map((field) => (
+      <label key={field} className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={values.includes(field)}
+          onChange={(e) => {
+            if (e.target.checked) {
+              onChange([...values, field]);
+            } else {
+              onChange(values.filter(f => f !== field));
+            }
+          }}
+          className="rounded border border-slate-300 text-brand-600 focus:ring-brand-500"
+        />
+        <span>{field}</span>
+      </label>
+    ))}
+  </div>
+);
 
 export default function VisualizePage() {
   const { datasets, charts, saveChart, generateId } = useStore();
@@ -390,7 +437,7 @@ export default function VisualizePage() {
               </div>
 
               <div className="mt-6 space-y-3">
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Chart type</p>
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Visualization type</p>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {chartDefinitions.map((chart) => (
                     <button
@@ -417,6 +464,28 @@ export default function VisualizePage() {
                       </span>
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-left transition ${
+                      chartType === "card"
+                        ? "border-brand-300 bg-brand-50 text-brand-900 shadow-sm"
+                        : "border-slate-200 text-slate-600 hover:border-brand-200 hover:bg-brand-50/40 dark:border-slate-600 dark:text-slate-300 dark:hover:border-brand-300/40"
+                    }`}
+                    onClick={() => {
+                      chartTypeField.onChange({ target: { value: "card" } });
+                      setValue("chartType", "card", { shouldDirty: true });
+                    }}
+                  >
+                    <span
+                      className={`mt-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${
+                        chartType === "card" ? "bg-brand-500" : "bg-slate-300 dark:bg-slate-500"
+                      }`}
+                    />
+                    <span className="flex flex-col gap-1">
+                      <span className="text-sm font-semibold">Card Aggregation</span>
+                      <span className="text-xs leading-snug text-slate-500 dark:text-slate-300">Display aggregated metrics in card format</span>
+                    </span>
+                  </button>
                 </div>
                 {chartSummary ? (
                   <p className="text-xs text-slate-500 dark:text-slate-400">Hint: {chartSummary.description}.</p>
@@ -635,6 +704,77 @@ export default function VisualizePage() {
                         </select>
                         {mappingHint(mappings.yField, "number")}
                       </label>
+                      {chartType === "gauge" ? (
+                        <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200 mt-4">
+                          Max value (optional)
+                          <input
+                            type="number"
+                            value={mappings.maxValue || ""}
+                            onChange={(event) => setValue("mappings.maxValue", event.target.value ? parseFloat(event.target.value) : null, { shouldDirty: true })}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100"
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {chartType === "table" ? (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                        X Field
+                        <FieldSelector
+                          value={mappings.xField}
+                          onChange={(value) => setValue("mappings.xField", value, { shouldDirty: true })}
+                          fields={meta.headers}
+                        />
+                        {mappingHint(mappings.xField, "string")}
+                      </label>
+                      <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                        Y Fields
+                        <MultiFieldSelector
+                          value={mappings.yFields}
+                          onChange={(value) => setValue("mappings.yFields", value, { shouldDirty: true })}
+                          fields={meta.numericFields}
+                        />
+                        {mappingHint(mappings.yFields, "array")}
+                      </label>
+                    </div>
+                  ) : null}
+
+                  {chartType === "heatmap" ? (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                        X Field
+                        <FieldSelector
+                          value={mappings.xField}
+                          onChange={(value) => setValue("mappings.xField", value, { shouldDirty: true })}
+                          fields={meta.headers}
+                        />
+                        {mappingHint(mappings.xField, "string")}
+                      </label>
+                      <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                        Y Field
+                        <FieldSelector
+                          value={mappings.yField}
+                          onChange={(value) => setValue("mappings.yField", value, { shouldDirty: true })}
+                          fields={meta.numericFields}
+                        />
+                        {mappingHint(mappings.yField, "number")}
+                      </label>
+                    </div>
+                  ) : null}
+
+                  {chartType === "card" ? (
+                    <div>
+                      <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                        Numeric Field
+                        <FieldSelector
+                          value={mappings.yField}
+                          onChange={(value) => setValue("mappings.yField", value, { shouldDirty: true })}
+                          fields={meta.numericFields}
+                        />
+                        {mappingHint(mappings.yField, "number")}
+                      </label>
                     </div>
                   ) : null}
 
@@ -652,8 +792,8 @@ export default function VisualizePage() {
                             <option key={header} value={header}>
                               {header} ({fieldTypeLabel(header, typeMap)})
                             </option>
-                          ))}
-                        </select>
+                          ))}"
+                          </select>
                         {mappingHint(mappings.xField, "number")}
                       </label>
                       <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
